@@ -1,4 +1,5 @@
-import type { RangeId, SessionSize, Word } from "../types";
+import { languageName } from "./languages";
+import type { Entry, LangCode, RangeId, SessionSize } from "../types";
 
 export const RANGES: { id: RangeId; label: string; hint: string; start: number; end: number }[] = [
   { id: "top100", label: "First 100", hint: "Most frequent lemmas", start: 0, end: 100 },
@@ -11,13 +12,48 @@ export const RANGES: { id: RangeId; label: string; hint: string; start: number; 
   { id: "band5", label: "501–1000", hint: "Less common half", start: 500, end: 1000 },
 ];
 
-export function wordsForRange(words: Word[], range: RangeId): Word[] {
-  const spec = RANGES.find((item) => item.id === range) ?? RANGES[0];
-  return words.slice(spec.start, spec.end);
+export function hasForm(entry: Entry, lang: LangCode): boolean {
+  const form = entry.forms[lang];
+  return Boolean(form?.text.trim());
 }
 
-export function buildSession(words: Word[], size: SessionSize): Word[] {
-  const shuffled = [...words];
+export function formText(entry: Entry, lang: LangCode): string {
+  return entry.forms[lang]?.text ?? "";
+}
+
+/** Rank used to order a pair: prefer the non-English side, then answer, then prompt. */
+export function pairRank(entry: Entry, from: LangCode, to: LangCode): number {
+  const preferred = to !== "en" ? to : from !== "en" ? from : to;
+  const rank = entry.ranks[preferred] ?? entry.ranks[to] ?? entry.ranks[from];
+  return rank ?? Number.MAX_SAFE_INTEGER;
+}
+
+function inPrimaryDeck(entry: Entry, from: LangCode, to: LangCode): boolean {
+  const langs = new Set([from, to]);
+  if (langs.has("pl") && langs.has("de")) return entry.ranks.pl != null;
+  if (langs.has("de") && langs.has("en")) return entry.ranks.de != null;
+  if (langs.has("pl") && langs.has("en")) return entry.ranks.pl != null;
+  return true;
+}
+
+export function entriesForPair(entries: Entry[], from: LangCode, to: LangCode): Entry[] {
+  if (from === to) return [];
+  return entries
+    .filter((entry) => hasForm(entry, from) && hasForm(entry, to) && inPrimaryDeck(entry, from, to))
+    .sort((a, b) => {
+      const delta = pairRank(a, from, to) - pairRank(b, from, to);
+      if (delta !== 0) return delta;
+      return a.id.localeCompare(b.id);
+    });
+}
+
+export function wordsForRange(entries: Entry[], range: RangeId): Entry[] {
+  const spec = RANGES.find((item) => item.id === range) ?? RANGES[0];
+  return entries.slice(spec.start, spec.end);
+}
+
+export function buildSession(entries: Entry[], size: SessionSize): Entry[] {
+  const shuffled = [...entries];
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -26,14 +62,20 @@ export function buildSession(words: Word[], size: SessionSize): Word[] {
   return shuffled.slice(0, Math.min(size, shuffled.length));
 }
 
-export function promptFor(word: Word, direction: "en-pl" | "pl-en"): string {
-  return direction === "en-pl" ? word.en : word.pl;
+export function promptFor(entry: Entry, from: LangCode): string {
+  return formText(entry, from);
 }
 
-export function expectedFor(word: Word, direction: "en-pl" | "pl-en"): string {
-  return direction === "en-pl" ? word.pl : word.en;
+export function expectedFor(entry: Entry, to: LangCode): string {
+  return formText(entry, to);
 }
 
-export function acceptedFor(word: Word, direction: "en-pl" | "pl-en"): string[] {
-  return direction === "en-pl" ? [word.pl] : [word.en, ...word.accepted];
+export function acceptedFor(entry: Entry, to: LangCode): string[] {
+  const form = entry.forms[to];
+  if (!form) return [];
+  return [form.text, ...form.accepted];
+}
+
+export function sessionKicker(from: LangCode, to: LangCode): string {
+  return `${languageName(from)} → type ${languageName(to)}`;
 }

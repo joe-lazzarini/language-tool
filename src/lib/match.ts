@@ -1,4 +1,6 @@
-/** Case-insensitive, Unicode-normalized comparison with trimmed whitespace. */
+/** Case-insensitive, Unicode-normalized comparison with trimmed whitespace.
+ *  pl-PL lowercasing also folds German ä ö ü ß correctly.
+ */
 export function normalizeAnswer(value: string): string {
   return value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("pl-PL");
 }

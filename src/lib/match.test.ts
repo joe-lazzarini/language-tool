@@ -32,4 +32,20 @@ describe("isCorrectAnswer", () => {
   it("rejects empty input", () => {
     expect(isCorrectAnswer("   ", "być")).toBe(false);
   });
+
+  it("is case-insensitive for German and requires ß / umlauts", () => {
+    expect(isCorrectAnswer("  Straße ", "Straße")).toBe(true);
+    expect(isCorrectAnswer("STRASSE", "Straße")).toBe(false);
+    expect(isCorrectAnswer("Konnen", "können")).toBe(false);
+    expect(isCorrectAnswer("KÖNNEN", "können")).toBe(true);
+    expect(isCorrectAnswer("uber", "über")).toBe(false);
+    expect(isCorrectAnswer("über", "über")).toBe(true);
+  });
+
+  it("matches any listed German or Polish lemma for a pair", () => {
+    expect(isCorrectAnswer("sein", "sein", ["sein"])).toBe(true);
+    expect(isCorrectAnswer("Być", "być", ["być"])).toBe(true);
+    expect(isCorrectAnswer("to be", "to be", ["be", "exist"])).toBe(true);
+    expect(isCorrectAnswer("be", "to be", ["be", "exist"])).toBe(true);
+  });
 });
