@@ -373,7 +373,7 @@ export function App() {
   const [session, setSession] = useState<Word[] | null>(null);
 
   useEffect(() => {
-    fetch("./data/words.json")
+    fetch(`${import.meta.env.BASE_URL}data/words.json`)
       .then((response) => {
         if (!response.ok) throw new Error("Could not load the word list.");
         return response.json() as Promise<Dataset>;

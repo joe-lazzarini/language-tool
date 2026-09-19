@@ -23,7 +23,7 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (usually `http://localhost:5173`).
+Then open the URL Vite prints (usually `http://localhost:5173/language-tool/`). The `base` is `/language-tool/` so the same asset paths work on GitHub Pages.
 
 ```bash
 npm test          # unit tests for answer matching
@@ -31,7 +31,9 @@ npm run build     # production build to dist/
 npm run preview   # serve the production build
 ```
 
-The app is a Vite + React static site. Deploy `dist/` to Vercel, Netlify, or GitHub Pages (`base` is `./`).
+The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages.
+
+**Live site:** https://joe-lazzarini.github.io/language-tool/
 
 ## Data
 
