@@ -1,9 +1,15 @@
 export type LangCode = "en" | "pl" | "de";
 export type Mode = "study" | "quiz";
 
+export type AcceptedAnswer = {
+  text: string;
+  /** Short gender / sense / register label shown on reveal. */
+  context?: string;
+};
+
 export type Form = {
   text: string;
-  accepted: string[];
+  accepted: AcceptedAnswer[];
 };
 
 export type Entry = {

@@ -341,17 +341,41 @@ a {
 
 .expected {
   margin: 0;
-  font-size: 1.6rem;
-  font-family: Fraunces, Georgia, serif;
 }
 
-.expected span {
+.expected > span {
   display: block;
   font-family: Outfit, sans-serif;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-soft);
+}
+
+.accepted-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.accepted-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.accepted-list strong {
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 500;
+}
+
+.accepted-list .context {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
 }
 
 .also {

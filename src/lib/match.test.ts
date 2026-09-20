@@ -24,6 +24,18 @@ describe("isCorrectAnswer", () => {
     expect(isCorrectAnswer("able", "to be able to, can", ["can", "be able"])).toBe(false);
   });
 
+  it("accepts any structured answer object, case-insensitive and trimmed", () => {
+    const accepted = [
+      { text: "ten", context: "masculine" },
+      { text: "ta", context: "feminine" },
+      { text: "to", context: "neuter" },
+    ];
+    expect(isCorrectAnswer("  TA ", "ten / ta / to", accepted)).toBe(true);
+    expect(isCorrectAnswer("Ten", "ten / ta / to", accepted)).toBe(true);
+    expect(isCorrectAnswer("to", "ten / ta / to", accepted)).toBe(true);
+    expect(isCorrectAnswer("tamten", "ten / ta / to", accepted)).toBe(false);
+  });
+
   it("treats a leading to as optional on expected verbs", () => {
     expect(isCorrectAnswer("want", "to want")).toBe(true);
     expect(isCorrectAnswer("to want", "to want")).toBe(true);
@@ -47,5 +59,16 @@ describe("isCorrectAnswer", () => {
     expect(isCorrectAnswer("Być", "być", ["być"])).toBe(true);
     expect(isCorrectAnswer("to be", "to be", ["be", "exist"])).toBe(true);
     expect(isCorrectAnswer("be", "to be", ["be", "exist"])).toBe(true);
+  });
+
+  it("accepts der, die, or das for the German article", () => {
+    const accepted = [
+      { text: "der", context: "masculine" },
+      { text: "die", context: "feminine / plural" },
+      { text: "das", context: "neuter" },
+    ];
+    expect(isCorrectAnswer("die", "der / die / das", accepted)).toBe(true);
+    expect(isCorrectAnswer("Das", "der / die / das", accepted)).toBe(true);
+    expect(isCorrectAnswer("den", "der / die / das", accepted)).toBe(false);
   });
 });

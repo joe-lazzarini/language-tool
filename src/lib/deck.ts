@@ -1,5 +1,6 @@
 import { languageName } from "./languages";
-import type { Entry, LangCode, RangeId, SessionSize } from "../types";
+import { normalizeAnswer } from "./match";
+import type { AcceptedAnswer, Entry, LangCode, RangeId, SessionSize } from "../types";
 
 export const RANGES: { id: RangeId; label: string; hint: string; start: number; end: number }[] = [
   { id: "top100", label: "First 100", hint: "Most frequent lemmas", start: 0, end: 100 },
@@ -70,10 +71,29 @@ export function expectedFor(entry: Entry, to: LangCode): string {
   return formText(entry, to);
 }
 
+export function acceptedAnswers(entry: Entry, lang: LangCode): AcceptedAnswer[] {
+  return entry.forms[lang]?.accepted ?? [];
+}
+
 export function acceptedFor(entry: Entry, to: LangCode): string[] {
-  const form = entry.forms[to];
-  if (!form) return [];
-  return [form.text, ...form.accepted];
+  return acceptedAnswers(entry, to).map((item) => item.text);
+}
+
+/** Canonical answers to show after check / skip / study reveal. */
+export function revealAnswers(entry: Entry, lang: LangCode): AcceptedAnswer[] {
+  const seen = new Set<string>();
+  const out: AcceptedAnswer[] = [];
+  for (const item of acceptedAnswers(entry, lang)) {
+    const key = normalizeAnswer(item.text);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  if (out.length === 0) {
+    const text = formText(entry, lang).trim();
+    if (text) out.push({ text });
+  }
+  return out;
 }
 
 export function sessionKicker(from: LangCode, to: LangCode): string {
