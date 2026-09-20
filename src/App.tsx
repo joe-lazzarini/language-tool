@@ -1,39 +1,83 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { acceptedFor, buildSession, expectedFor, promptFor, RANGES, wordsForRange } from "./lib/deck";
+import {
+  acceptedFor,
+  buildSession,
+  entriesForPair,
+  expectedFor,
+  formText,
+  promptFor,
+  RANGES,
+  sessionKicker,
+  wordsForRange,
+} from "./lib/deck";
+import {
+  answerPlaceholder,
+  isLangCode,
+  LANG_CODES,
+  languageName,
+  LANGUAGES,
+  pairHint,
+  pairLabel,
+  SPECIAL_LETTERS,
+} from "./lib/languages";
 import { isCorrectAnswer } from "./lib/match";
-import type { CardResult, Dataset, Direction, Mode, Settings, Word } from "./types";
+import type { CardResult, Dataset, Entry, LangCode, Mode, Settings } from "./types";
 
-const POLISH_LETTERS = ["ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż"] as const;
-const STORAGE_KEY = "slowka-settings-v1";
+const STORAGE_KEY = "slowka-settings-v2";
+const LEGACY_STORAGE_KEY = "slowka-settings-v1";
 
 const defaultSettings: Settings = {
   mode: "quiz",
-  direction: "en-pl",
+  from: "en",
+  to: "pl",
   range: "top100",
   size: 10,
 };
 
+function migrateLegacy(raw: string): Partial<Settings> | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<Settings> & { direction?: string };
+    if (parsed.from && parsed.to) return parsed;
+    if (parsed.direction === "pl-en") return { ...parsed, from: "pl", to: "en" };
+    if (parsed.direction === "en-pl") return { ...parsed, from: "en", to: "pl" };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function loadSettings(): Settings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultSettings;
-    return { ...defaultSettings, ...JSON.parse(raw) };
+    const current = localStorage.getItem(STORAGE_KEY);
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    const parsed = current ? migrateLegacy(current) : legacy ? migrateLegacy(legacy) : null;
+    if (!parsed) return defaultSettings;
+    const from = parsed.from && isLangCode(parsed.from) ? parsed.from : defaultSettings.from;
+    const to = parsed.to && isLangCode(parsed.to) ? parsed.to : defaultSettings.to;
+    return {
+      ...defaultSettings,
+      ...parsed,
+      from,
+      to: to === from ? (from === "pl" ? "en" : "pl") : to,
+    };
   } catch {
     return defaultSettings;
   }
 }
 
 function SpecialKeys({
-  visible,
+  letters,
+  label,
   onInsert,
 }: {
-  visible: boolean;
+  letters: readonly string[];
+  label: string;
   onInsert: (letter: string) => void;
 }) {
-  if (!visible) return null;
+  if (letters.length === 0) return null;
   return (
-    <div className="keys" aria-label="Polish letters">
-      {POLISH_LETTERS.map((letter) => (
+    <div className="keys" aria-label={label}>
+      {letters.map((letter) => (
         <button key={letter} type="button" className="key" onClick={() => onInsert(letter)}>
           {letter}
         </button>
@@ -42,31 +86,80 @@ function SpecialKeys({
   );
 }
 
+function LanguagePicker({
+  label,
+  value,
+  locked,
+  onChange,
+}: {
+  label: string;
+  value: LangCode;
+  locked?: LangCode;
+  onChange: (code: LangCode) => void;
+}) {
+  return (
+    <div className="field">
+      <span className="label">{label}</span>
+      <div className="segment">
+        {LANGUAGES.map((lang) => (
+          <button
+            key={lang.code}
+            type="button"
+            className={value === lang.code ? "on" : ""}
+            onClick={() => onChange(lang.code)}
+          >
+            {lang.name}
+          </button>
+        ))}
+      </div>
+      {locked && value === locked ? (
+        <p className="hint">Pick a different language from the other side.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function Home({
   settings,
   setSettings,
-  wordCount,
+  pairCount,
   onStart,
 }: {
   settings: Settings;
   setSettings: (next: Settings) => void;
-  wordCount: number;
+  pairCount: number;
   onStart: () => void;
 }) {
   const pool = useMemo(() => {
     const spec = RANGES.find((item) => item.id === settings.range);
     if (!spec) return 0;
-    return Math.max(0, Math.min(wordCount, spec.end) - spec.start);
-  }, [settings.range, wordCount]);
+    return Math.max(0, Math.min(pairCount, spec.end) - spec.start);
+  }, [settings.range, pairCount]);
+
+  const sameLanguage = settings.from === settings.to;
+
+  function setFrom(from: LangCode) {
+    const to = from === settings.to ? (LANG_CODES.find((code) => code !== from) ?? "pl") : settings.to;
+    setSettings({ ...settings, from, to });
+  }
+
+  function setTo(to: LangCode) {
+    const from = to === settings.from ? (LANG_CODES.find((code) => code !== to) ?? "en") : settings.from;
+    setSettings({ ...settings, from, to });
+  }
+
+  function swap() {
+    setSettings({ ...settings, from: settings.to, to: settings.from });
+  }
 
   return (
     <div className="stack">
       <header className="hero">
-        <p className="eyebrow">Polish · 1000 lemmas</p>
+        <p className="eyebrow">English · Polish · German</p>
         <h1>Słówka</h1>
         <p className="lede">
-          Practice the most common Polish words in their dictionary form. Type the translation,
-          check it, and see the expected lemma.
+          Practice common lemmas in their dictionary form. Choose any prompt and answer language,
+          type the translation, and see the expected word.
         </p>
       </header>
 
@@ -97,30 +190,19 @@ function Home({
           </p>
         </div>
 
-        <div className="field">
-          <span className="label">Direction</span>
-          <div className="segment">
-            <button
-              type="button"
-              className={settings.direction === "en-pl" ? "on" : ""}
-              onClick={() => setSettings({ ...settings, direction: "en-pl" })}
-            >
-              English → Polish
-            </button>
-            <button
-              type="button"
-              className={settings.direction === "pl-en" ? "on" : ""}
-              onClick={() => setSettings({ ...settings, direction: "pl-en" })}
-            >
-              Polish → English
+        <div className="pair-grid">
+          <LanguagePicker label="Prompt" value={settings.from} onChange={setFrom} />
+          <div className="pair-swap">
+            <button type="button" className="swap" onClick={swap} aria-label="Swap languages">
+              ⇄
             </button>
           </div>
-          <p className="hint">
-            {settings.direction === "en-pl"
-              ? "Default: see the English gloss and type the Polish lemma."
-              : "See the Polish word and type an English meaning."}
-          </p>
+          <LanguagePicker label="Answer" value={settings.to} onChange={setTo} />
         </div>
+        <p className="hint pair-hint">
+          Default is English → Polish. Now {pairLabel(settings.from, settings.to)} —{" "}
+          {pairHint(settings.from, settings.to)}
+        </p>
 
         <div className="field">
           <span className="label">Which words</span>
@@ -152,10 +234,13 @@ function Home({
               </button>
             ))}
           </div>
-          <p className="hint">{pool} lemmas in this band, shuffled each round.</p>
+          <p className="hint">
+            {pairCount} usable {pairLabel(settings.from, settings.to)} cards; {pool} in this band,
+            shuffled each round.
+          </p>
         </div>
 
-        <button type="button" className="primary" onClick={onStart} disabled={pool === 0}>
+        <button type="button" className="primary" onClick={onStart} disabled={pool === 0 || sameLanguage}>
           Start {settings.mode === "quiz" ? "quiz" : "study"}
         </button>
       </section>
@@ -166,12 +251,14 @@ function Home({
 function Session({
   words,
   mode,
-  direction,
+  from,
+  to,
   onExit,
 }: {
-  words: Word[];
+  words: Entry[];
   mode: Mode;
-  direction: Direction;
+  from: LangCode;
+  to: LangCode;
   onExit: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -184,9 +271,9 @@ function Session({
 
   const word = words[index];
   const total = words.length;
-  const prompt = word ? promptFor(word, direction) : "";
-  const expected = word ? expectedFor(word, direction) : "";
-  const typingPolish = direction === "en-pl";
+  const prompt = word ? promptFor(word, from) : "";
+  const expected = word ? expectedFor(word, to) : "";
+  const specials = SPECIAL_LETTERS[to] ?? [];
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -211,7 +298,7 @@ function Session({
 
   function check(given = input) {
     if (!word || revealed) return;
-    const ok = isCorrectAnswer(given, expected, acceptedFor(word, direction));
+    const ok = isCorrectAnswer(given, expected, acceptedFor(word, to));
     setCorrect(ok);
     setRevealed(true);
     setResults((prev) => [...prev, { word, correct: ok, given: given.trim() }]);
@@ -270,8 +357,8 @@ function Session({
             <ul className="misses">
               {missed.map((item) => (
                 <li key={item.word.id}>
-                  <strong>{item.word.pl}</strong>
-                  <span>{item.word.en}</span>
+                  <strong>{formText(item.word, to)}</strong>
+                  <span>{formText(item.word, from)}</span>
                   {item.given ? <em>you: {item.given}</em> : <em>skipped</em>}
                 </li>
               ))}
@@ -309,7 +396,7 @@ function Session({
 
       <article className={`card ${revealed ? (correct === true ? "ok" : correct === false ? "bad" : "open") : ""}`}>
         <p className="card-kicker">
-          {direction === "en-pl" ? "English → type Polish" : "Polish → type English"}
+          {sessionKicker(from, to)}
           <span className="pos">{word.pos}</span>
         </p>
         <p className="prompt">{prompt}</p>
@@ -321,8 +408,7 @@ function Session({
             <p className="expected">
               <span>Expected</span> {expected}
             </p>
-            {direction === "en-pl" && <p className="also">{word.en}</p>}
-            {direction === "pl-en" && <p className="also">{word.pl}</p>}
+            <p className="also">{formText(word, from)}</p>
           </div>
         )}
       </article>
@@ -341,10 +427,14 @@ function Session({
           autoComplete="off"
           spellCheck={false}
           enterKeyHint={revealed ? "go" : "done"}
-          placeholder={typingPolish ? "Type the Polish word" : "Type an English meaning"}
+          placeholder={answerPlaceholder(to)}
           disabled={revealed}
         />
-        <SpecialKeys visible={typingPolish && !revealed} onInsert={insertLetter} />
+        <SpecialKeys
+          letters={!revealed ? specials : []}
+          label={`${languageName(to)} letters`}
+          onInsert={insertLetter}
+        />
         <div className="actions">
           {!revealed ? (
             <>
@@ -370,7 +460,7 @@ export function App() {
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
-  const [session, setSession] = useState<Word[] | null>(null);
+  const [session, setSession] = useState<Entry[] | null>(null);
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/words.json`)
@@ -387,9 +477,13 @@ export function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
 
+  const pairEntries = useMemo(() => {
+    if (!dataset) return [];
+    return entriesForPair(dataset.entries, settings.from, settings.to);
+  }, [dataset, settings.from, settings.to]);
+
   function start() {
-    if (!dataset) return;
-    const pool = wordsForRange(dataset.words, settings.range);
+    const pool = wordsForRange(pairEntries, settings.range);
     setSession(buildSession(pool, settings.size));
   }
 
@@ -397,12 +491,12 @@ export function App() {
     <div className="page">
       <div className="shell">
         {error && <p className="banner">{error}</p>}
-        {!dataset && !error && <p className="lede">Loading the 1000-word deck…</p>}
+        {!dataset && !error && <p className="lede">Loading the decks…</p>}
         {dataset && !session && (
           <Home
             settings={settings}
             setSettings={setSettings}
-            wordCount={dataset.words.length}
+            pairCount={pairEntries.length}
             onStart={start}
           />
         )}
@@ -410,15 +504,20 @@ export function App() {
           <Session
             words={session}
             mode={settings.mode}
-            direction={settings.direction}
+            from={settings.from}
+            to={settings.to}
             onExit={() => setSession(null)}
           />
         )}
         <footer className="foot">
           <p>
-            Frequency:{" "}
+            Polish frequency:{" "}
             <a href="https://en.wiktionary.org/wiki/Wiktionary:Frequency_lists/Polish/KWJP">
               KWJP via Wiktionary
+            </a>
+            . German frequency:{" "}
+            <a href="https://universaldependencies.org/treebanks/de_gsd/index.html">
+              Universal Dependencies German-GSD
             </a>
             . Glosses: English Wiktionary (CC BY-SA).
           </p>

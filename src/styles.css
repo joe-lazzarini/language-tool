@@ -164,6 +164,30 @@ a {
   transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
+.pair-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.pair-swap {
+  display: flex;
+  justify-content: center;
+}
+
+.swap {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1.2rem;
+}
+
+.pair-hint {
+  margin: -6px 0 0;
+}
+
 .segment button {
   flex: 1 1 8rem;
   padding: 10px 12px;
@@ -448,5 +472,10 @@ a {
 
   .segment button {
     flex-basis: 100%;
+  }
+
+  .pair-grid .segment button {
+    flex-basis: 0;
+    flex-grow: 1;
   }
 }

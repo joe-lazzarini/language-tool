@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KWJP_DUMP = Path(__file__).resolve().parent / "kwjp-lemmas.txt"
-OUT = ROOT / "public" / "data" / "words.json"
+OUT = Path(__file__).resolve().parent / "pl-en.json"
 USER_AGENT = "PolishVocabFlashcards/1.0 (educational; https://github.com)"
 
 POS_MAP = {
@@ -499,6 +499,7 @@ def main() -> None:
     OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("wrote", OUT, "count", len(words), "skipped", len(skipped))
     print("skipped sample", skipped[:30])
+    print("Run `npm run deck` next to rebuild the multilingual public/data/words.json.")
 
 
 if __name__ == "__main__":
