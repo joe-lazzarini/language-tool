@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AnswerReveal } from "./components/AnswerReveal";
 import {
   acceptedFor,
   buildSession,
@@ -7,6 +8,7 @@ import {
   formText,
   promptFor,
   RANGES,
+  revealAnswers,
   sessionKicker,
   wordsForRange,
 } from "./lib/deck";
@@ -159,7 +161,7 @@ function Home({
         <h1>Słówka</h1>
         <p className="lede">
           Practice common lemmas in their dictionary form. Choose any prompt and answer language,
-          type the translation, and see the expected word.
+          type any accepted translation, and see each valid form with a short gloss.
         </p>
       </header>
 
@@ -405,9 +407,7 @@ function Session({
             {correct === true && <p className="ok-text">Correct</p>}
             {correct === false && <p className="bad-text">Incorrect</p>}
             {correct === null && <p className="open-text">Answer</p>}
-            <p className="expected">
-              <span>Expected</span> {expected}
-            </p>
+            <AnswerReveal answers={revealAnswers(word, to)} />
             <p className="also">{formText(word, from)}</p>
           </div>
         )}
