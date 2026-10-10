@@ -17,6 +17,16 @@ export type Entry = {
   pos: string;
   ranks: Partial<Record<LangCode, number>>;
   forms: Partial<Record<LangCode, Form>>;
+  /** Saved by the user. Included in My words and the full deck, not frequency bands. */
+  custom?: boolean;
+};
+
+export type CustomWord = {
+  id: string;
+  pos: string;
+  forms: Partial<Record<LangCode, Form>>;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type LanguageInfo = {
@@ -64,7 +74,8 @@ export type RangeId =
   | "band2"
   | "band3"
   | "band4"
-  | "band5";
+  | "band5"
+  | "mine";
 
 export type SessionSize = 10 | 20 | 50 | "all";
 

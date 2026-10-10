@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AccountBar } from "./components/AccountBar";
+import { AddWord } from "./components/AddWord";
 import { AnswerReveal } from "./components/AnswerReveal";
+import { SpecialKeys } from "./components/SpecialKeys";
+import { WordList } from "./components/WordList";
+import { withCustomEntries, toEntry, type CustomWord } from "./lib/customWords";
 import {
   acceptedFor,
   buildSession,
@@ -12,6 +17,7 @@ import {
   sessionKicker,
   wordsForRange,
 } from "./lib/deck";
+import { useCustomWords } from "./lib/useCustomWords";
 import {
   answerPlaceholder,
   isLangCode,
@@ -56,36 +62,17 @@ function loadSettings(): Settings {
     if (!parsed) return defaultSettings;
     const from = parsed.from && isLangCode(parsed.from) ? parsed.from : defaultSettings.from;
     const to = parsed.to && isLangCode(parsed.to) ? parsed.to : defaultSettings.to;
+    const range = parsed.range && RANGES.some((item) => item.id === parsed.range) ? parsed.range : defaultSettings.range;
     return {
       ...defaultSettings,
       ...parsed,
       from,
       to: to === from ? (from === "pl" ? "en" : "pl") : to,
+      range,
     };
   } catch {
     return defaultSettings;
   }
-}
-
-function SpecialKeys({
-  letters,
-  label,
-  onInsert,
-}: {
-  letters: readonly string[];
-  label: string;
-  onInsert: (letter: string) => void;
-}) {
-  if (letters.length === 0) return null;
-  return (
-    <div className="keys" aria-label={label}>
-      {letters.map((letter) => (
-        <button key={letter} type="button" className="key" onClick={() => onInsert(letter)}>
-          {letter}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function LanguagePicker({
@@ -125,19 +112,21 @@ function Home({
   settings,
   setSettings,
   pairCount,
+  pool,
+  customCount,
   onStart,
+  onAdd,
+  onList,
 }: {
   settings: Settings;
   setSettings: (next: Settings) => void;
   pairCount: number;
+  pool: number;
+  customCount: number;
   onStart: () => void;
+  onAdd: () => void;
+  onList: () => void;
 }) {
-  const pool = useMemo(() => {
-    const spec = RANGES.find((item) => item.id === settings.range);
-    if (!spec) return 0;
-    return Math.max(0, Math.min(pairCount, spec.end) - spec.start);
-  }, [settings.range, pairCount]);
-
   const sameLanguage = settings.from === settings.to;
 
   function setFrom(from: LangCode) {
@@ -237,9 +226,24 @@ function Home({
             ))}
           </div>
           <p className="hint">
-            {pairCount} usable {pairLabel(settings.from, settings.to)} cards; {pool} in this band,
-            shuffled each round.
+            {settings.range === "mine"
+              ? pool === 0
+                ? "You haven't added words for this pair yet."
+                : `${pool} saved ${pool === 1 ? "word" : "words"} for ${pairLabel(settings.from, settings.to)}.`
+              : `${pairCount} usable ${pairLabel(settings.from, settings.to)} cards; ${pool} in this band, shuffled each round.`}
+            {customCount > 0 && settings.range !== "mine" && settings.range !== "all"
+              ? " Your words are in All and in My words."
+              : ""}
           </p>
+        </div>
+
+        <div className="tool-row">
+          <button type="button" className="secondary" onClick={onAdd}>
+            Add a word
+          </button>
+          <button type="button" className="secondary" onClick={onList}>
+            Your words{customCount ? ` (${customCount})` : ""}
+          </button>
         </div>
 
         <button type="button" className="primary" onClick={onStart} disabled={pool === 0 || sameLanguage}>
@@ -399,7 +403,7 @@ function Session({
       <article className={`card ${revealed ? (correct === true ? "ok" : correct === false ? "bad" : "open") : ""}`}>
         <p className="card-kicker">
           {sessionKicker(from, to)}
-          <span className="pos">{word.pos}</span>
+          <span className="pos">{word.custom ? "your word · " : ""}{word.pos}</span>
         </p>
         <p className="prompt">{prompt}</p>
         {revealed && (
@@ -456,11 +460,16 @@ function Session({
   );
 }
 
+type Screen = "home" | "add" | "list";
+
 export function App() {
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
   const [session, setSession] = useState<Entry[] | null>(null);
+  const [screen, setScreen] = useState<Screen>("home");
+  const [editing, setEditing] = useState<CustomWord | null>(null);
+  const wordsApi = useCustomWords();
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}data/words.json`)
@@ -477,10 +486,16 @@ export function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
 
+  const customEntries = useMemo(() => wordsApi.words.map(toEntry), [wordsApi.words]);
+  const studyEntries = useMemo(
+    () => (dataset ? withCustomEntries(dataset.entries, customEntries) : customEntries),
+    [dataset, customEntries],
+  );
   const pairEntries = useMemo(() => {
-    if (!dataset) return [];
-    return entriesForPair(dataset.entries, settings.from, settings.to);
-  }, [dataset, settings.from, settings.to]);
+    const source = settings.range === "mine" ? customEntries : studyEntries;
+    return entriesForPair(source, settings.from, settings.to);
+  }, [customEntries, studyEntries, settings.from, settings.to, settings.range]);
+  const pool = wordsForRange(pairEntries, settings.range).length;
 
   function start() {
     const pool = wordsForRange(pairEntries, settings.range);
@@ -491,13 +506,62 @@ export function App() {
     <div className="page">
       <div className="shell">
         {error && <p className="banner">{error}</p>}
+        {!session && (
+          <AccountBar
+            configured={wordsApi.configured}
+            account={wordsApi.account}
+            ready={wordsApi.ready}
+            status={wordsApi.status}
+            error={wordsApi.error}
+            signingIn={wordsApi.signingIn}
+            onSignIn={() => void wordsApi.signIn()}
+            onSignOut={() => void wordsApi.signOut()}
+          />
+        )}
         {!dataset && !error && <p className="lede">Loading the decks…</p>}
-        {dataset && !session && (
+        {dataset && !session && screen === "home" && (
           <Home
             settings={settings}
             setSettings={setSettings}
             pairCount={pairEntries.length}
+            pool={pool}
+            customCount={wordsApi.words.length}
             onStart={start}
+            onAdd={() => {
+              setEditing(null);
+              setScreen("add");
+            }}
+            onList={() => setScreen("list")}
+          />
+        )}
+        {dataset && !session && screen === "add" && (
+          <AddWord
+            deck={dataset.entries}
+            initial={editing}
+            onCancel={() => {
+              setEditing(null);
+              setScreen(editing ? "list" : "home");
+            }}
+            onSave={async (word) => {
+              await wordsApi.saveWord(word);
+              setEditing(null);
+              setScreen("list");
+            }}
+          />
+        )}
+        {dataset && !session && screen === "list" && (
+          <WordList
+            words={wordsApi.words}
+            onAdd={() => {
+              setEditing(null);
+              setScreen("add");
+            }}
+            onEdit={(word) => {
+              setEditing(word);
+              setScreen("add");
+            }}
+            onDelete={(id) => void wordsApi.deleteWord(id)}
+            onBack={() => setScreen("home")}
           />
         )}
         {dataset && session && (
@@ -519,7 +583,9 @@ export function App() {
             <a href="https://universaldependencies.org/treebanks/de_gsd/index.html">
               Universal Dependencies German-GSD
             </a>
-            . Glosses: English Wiktionary (CC BY-SA).
+            . Glosses: English Wiktionary (CC BY-SA). Words you add are looked up in that deck, then
+            English Wiktionary and{" "}
+            <a href="https://mymemory.translated.net/">MyMemory</a>.
           </p>
         </footer>
       </div>

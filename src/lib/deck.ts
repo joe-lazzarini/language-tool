@@ -11,6 +11,7 @@ export const RANGES: { id: RangeId; label: string; hint: string; start: number; 
   { id: "band3", label: "201–300", hint: "Keep stretching", start: 200, end: 300 },
   { id: "band4", label: "301–500", hint: "Mid-frequency", start: 300, end: 500 },
   { id: "band5", label: "501–1000", hint: "Less common half", start: 500, end: 1000 },
+  { id: "mine", label: "My words", hint: "Words you added", start: 0, end: 0 },
 ];
 
 export function hasForm(entry: Entry, lang: LangCode): boolean {
@@ -30,6 +31,7 @@ export function pairRank(entry: Entry, from: LangCode, to: LangCode): number {
 }
 
 function inPrimaryDeck(entry: Entry, from: LangCode, to: LangCode): boolean {
+  if (entry.custom) return true;
   const langs = new Set([from, to]);
   if (langs.has("pl") && langs.has("de")) return entry.ranks.pl != null;
   if (langs.has("de") && langs.has("en")) return entry.ranks.de != null;
@@ -49,8 +51,13 @@ export function entriesForPair(entries: Entry[], from: LangCode, to: LangCode): 
 }
 
 export function wordsForRange(entries: Entry[], range: RangeId): Entry[] {
+  const custom = entries.filter((entry) => entry.custom);
+  const bundled = entries.filter((entry) => !entry.custom);
+  if (range === "mine") return custom;
   const spec = RANGES.find((item) => item.id === range) ?? RANGES[0];
-  return entries.slice(spec.start, spec.end);
+  const slice = bundled.slice(spec.start, spec.end);
+  if (range === "all") return [...slice, ...custom];
+  return slice;
 }
 
 export function buildSession(entries: Entry[], size: SessionSize): Entry[] {

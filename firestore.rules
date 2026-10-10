@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// Each signed-in user may read and write only documents under users/{their uid}/words.
+// Deploy with: firebase deploy --only firestore:rules --project YOUR_PROJECT_ID
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isWord(data) {
+      return data.keys().hasAll(['id', 'pos', 'forms', 'createdAt', 'updatedAt'])
+        && data.id is string
+        && data.id.size() > 0
+        && data.id.size() <= 80
+        && data.pos is string
+        && data.pos.size() > 0
+        && data.pos.size() <= 40
+        && data.forms is map
+        && data.forms.size() > 0
+        && data.forms.size() <= 3
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.createdAt.size() < 40
+        && data.updatedAt.size() < 40;
+    }
+
+    match /users/{userId}/words/{wordId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && wordId == request.resource.data.id
+        && isWord(request.resource.data);
+      allow delete: if isOwner(userId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
