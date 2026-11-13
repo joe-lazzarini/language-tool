@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "data": "python3 scripts/build-dataset.py",
-    "deck": "python3 scripts/build-deck.py"
+    "deck": "python3 scripts/build-deck.py",
+    "translations": "python3 scripts/fetch-translations.py"
   },
   "dependencies": {
     "firebase": "^11.10.0",

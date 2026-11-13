@@ -39,8 +39,8 @@ export function WordList({
                   <span className="pos">{word.pos}</span>
                 </div>
                 <p className="hint word-gloss">
-                  {LANG_CODES.filter((code) => code !== "en")
-                    .map((code) => `${languageName(code)}: ${word.forms[code]?.text || "—"}`)
+                  {LANG_CODES.filter((code) => code !== "en" && word.forms[code]?.text)
+                    .map((code) => `${languageName(code)}: ${word.forms[code]?.text}`)
                     .join(" · ")}
                 </p>
                 <div className="row-actions">

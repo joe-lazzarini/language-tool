@@ -74,6 +74,15 @@ describe("parseLangEntry", () => {
     expect(parseLangEntry(CATS, "en")?.formOfLemma).toBe("cat");
   });
 
+  it("reads Spanish from the language registry", () => {
+    const parsed = parseLangEntry(
+      "==English==\n\n===Noun===\n# [[cat]]\n\n====Translations====\n{{trans-top|cat}}\n* Spanish: {{t+|es|gato|m}}\n* French: {{t+|fr|chat|m}}\n",
+      "en",
+    );
+    expect(parsed?.translations.es).toEqual([{ text: "gato", context: "masculine" }]);
+    expect(parsed?.translations.fr?.[0]?.text).toBe("chat");
+  });
+
   it("returns null when the language section is missing", () => {
     expect(parseLangEntry(KOT, "de")).toBeNull();
   });

@@ -2,7 +2,7 @@ import { findDeckEntry } from "./findDeck";
 import { buildForm, cloneForm } from "./forms";
 import { pickMemoryTranslations, type MemoryPayload } from "./mymemory";
 import { parseLangEntry, type LangParse } from "./wiktionary";
-import { LANG_CODES } from "./languages";
+import { LANG_CODES, languageByCode, pivotLanguage } from "./languages";
 import { normalizeAnswer } from "./match";
 import type { AcceptedAnswer, Entry, Form, LangCode } from "../types";
 
@@ -62,7 +62,8 @@ function answersFromParse(parsed: LangParse, source: LangCode, lemma: string): P
   const forms: Partial<Record<LangCode, AcceptedAnswer[]>> = {
     [source]: [{ text: lemma }],
   };
-  if (source !== "en" && parsed.glosses.length > 0) forms.en = parsed.glosses;
+  const pivot = pivotLanguage();
+  if (pivot && source !== pivot && parsed.glosses.length > 0) forms[pivot] = parsed.glosses;
   for (const code of LANG_CODES) {
     if (code === source) continue;
     const translated = parsed.translations[code];
@@ -88,8 +89,9 @@ async function lookupWiktionary(
   fetchImpl: typeof fetch,
 ): Promise<{ pos: string; lemma: string; forms: Partial<Record<LangCode, AcceptedAnswer[]>> } | null> {
   let page = await fetchWikiPage(query, fetchImpl);
-  if (!page && source === "de") {
-    const capitalized = query.charAt(0).toLocaleUpperCase("de-DE") + query.slice(1);
+  const sourceInfo = languageByCode(source);
+  if (!page && sourceInfo.capitalizeLookup) {
+    const capitalized = query.charAt(0).toLocaleUpperCase(sourceInfo.locale) + query.slice(1);
     if (normalizeAnswer(capitalized) !== normalizeAnswer(query) || capitalized !== query) {
       page = await fetchWikiPage(capitalized, fetchImpl);
     }
@@ -114,20 +116,21 @@ async function lookupWiktionary(
   const forms = answersFromParse(parsed, source, lemma);
   const missing = () => LANG_CODES.some((code) => code !== source && !forms[code]?.length);
 
+  const pivot = pivotLanguage();
   if (missing()) {
     const subpage = await fetchWikiPage(`${lemma}/translations`, fetchImpl);
     if (subpage) {
-      const sub = parseLangEntry(subpage.wikitext, "en") ?? parseLangEntry(subpage.wikitext, source);
+      const sub = (pivot ? parseLangEntry(subpage.wikitext, pivot) : null) ?? parseLangEntry(subpage.wikitext, source);
       if (sub) fillMissing(forms, sub.translations, source);
     }
   }
 
-  const gloss = forms.en?.[0]?.text?.replace(/^to\s+/i, "");
-  const stillMissing = LANG_CODES.some((code) => code !== source && code !== "en" && !forms[code]?.length);
-  if (stillMissing && gloss && source !== "en" && normalizeAnswer(gloss) !== normalizeAnswer(lemma)) {
+  const gloss = pivot ? forms[pivot]?.[0]?.text?.replace(/^to\s+/i, "") : undefined;
+  const stillMissing = LANG_CODES.some((code) => code !== source && code !== pivot && !forms[code]?.length);
+  if (stillMissing && gloss && pivot && source !== pivot && normalizeAnswer(gloss) !== normalizeAnswer(lemma)) {
     const hop = await fetchWikiPage(`${gloss}/translations`, fetchImpl);
     if (hop) {
-      const parsedHop = parseLangEntry(hop.wikitext, "en");
+      const parsedHop = parseLangEntry(hop.wikitext, pivot);
       if (parsedHop) fillMissing(forms, parsedHop.translations, source);
     }
   }
@@ -148,7 +151,7 @@ function applyAnswers(
 }
 
 /**
- * Fill the other two languages for a word typed in one language.
+ * Fill the other supported languages for a word typed in one language.
  * Order: bundled deck, English Wiktionary citation forms, then MyMemory.
  */
 export async function lookupWord(

@@ -1,7 +1,7 @@
 import { FormEvent, useRef, useState } from "react";
 import { SpecialKeys } from "./SpecialKeys";
 import { finalizeLanguage } from "../lib/forms";
-import { LANG_CODES, languageName, LANGUAGES, SPECIAL_LETTERS } from "../lib/languages";
+import { LANG_CODES, languageByCode, languageName, languageOptionLabel, LANGUAGES, SPECIAL_LETTERS } from "../lib/languages";
 import { createCustomWord } from "../lib/customWords";
 import { lookupWord, type LookupDraft } from "../lib/translate";
 import type { AcceptedAnswer, CustomWord, Entry, LangCode } from "../types";
@@ -22,11 +22,9 @@ const POS_OPTIONS = [
 type DraftForms = Record<LangCode, { text: string; accepted: AcceptedAnswer[] }>;
 
 function emptyForms(): DraftForms {
-  return {
-    en: { text: "", accepted: [{ text: "" }] },
-    pl: { text: "", accepted: [{ text: "" }] },
-    de: { text: "", accepted: [{ text: "" }] },
-  };
+  return Object.fromEntries(
+    LANG_CODES.map((code) => [code, { text: "", accepted: [{ text: "" }] }]),
+  ) as DraftForms;
 }
 
 function fromWord(word: CustomWord): DraftForms {
@@ -158,11 +156,11 @@ export function AddWord({
     const nextForms: CustomWord["forms"] = {};
     for (const code of LANG_CODES) {
       const form = finalizeLanguage(forms[code].text, forms[code].accepted);
-      if (!form) {
-        setError(`Add a ${languageName(code)} form before saving.`);
-        return;
-      }
-      nextForms[code] = form;
+      if (form) nextForms[code] = form;
+    }
+    if (Object.keys(nextForms).length < 2) {
+      setError("Add at least two languages before saving.");
+      return;
     }
     setSaving(true);
     try {
@@ -186,27 +184,32 @@ export function AddWord({
         <p className="eyebrow">{editing ? "Edit card" : "New card"}</p>
         <h1>{editing ? "Edit word" : "Add a word"}</h1>
         <p className="lede">
-          Type a word in one language. The other two are filled from the built-in deck, then Wiktionary,
-          then MyMemory. Check the dictionary forms, then save.
+          Type a word in one language. The others are filled from the built-in deck, then Wiktionary,
+          then MyMemory. Check the dictionary forms, then save. A card needs at least two languages.
         </p>
       </header>
 
       {!editing && (
         <form className="panel" onSubmit={runLookup}>
           <div className="field">
-            <span className="label">I know it in</span>
-            <div className="segment">
+            <label className="label" htmlFor="lookup-source">
+              I know it in
+            </label>
+            <select
+              id="lookup-source"
+              className="textin"
+              value={source}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (LANG_CODES.some((code) => code === next)) setSource(next as LangCode);
+              }}
+            >
               {LANGUAGES.map((lang) => (
-                <button
-                  key={lang.code}
-                  type="button"
-                  className={source === lang.code ? "on" : ""}
-                  onClick={() => setSource(lang.code)}
-                >
-                  {lang.name}
-                </button>
+                <option key={lang.code} value={lang.code}>
+                  {languageOptionLabel(lang)}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
           <div className="field">
             <label className="label" htmlFor="lookup-word">
@@ -222,8 +225,10 @@ export function AddWord({
               autoCorrect="off"
               autoComplete="off"
               spellCheck={false}
+              lang={languageByCode(source).locale}
               placeholder={`Type the ${languageName(source)} word`}
             />
+            {languageByCode(source).answerHint ? <p className="hint">{languageByCode(source).answerHint}</p> : null}
             <SpecialKeys
               letters={SPECIAL_LETTERS[source] ?? []}
               label={`${languageName(source)} letters`}

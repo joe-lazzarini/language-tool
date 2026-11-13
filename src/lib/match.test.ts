@@ -61,6 +61,34 @@ describe("isCorrectAnswer", () => {
     expect(isCorrectAnswer("be", "to be", ["be", "exist"])).toBe(true);
   });
 
+  it("folds Japanese romaji macrons without folding kana", () => {
+    expect(isCorrectAnswer("tokyo", "東京", [{ text: "東京" }, { text: "tōkyō", context: "romanization" }], "ja")).toBe(
+      true,
+    );
+    expect(isCorrectAnswer("toukyou", "東京", [{ text: "東京" }, { text: "toukyou", context: "romanization" }], "ja")).toBe(
+      true,
+    );
+    expect(isCorrectAnswer("か", "が", [], "ja")).toBe(false);
+    expect(isCorrectAnswer("が", "が", [], "ja")).toBe(true);
+  });
+
+  it("ignores Russian stress and treats ё as е", () => {
+    expect(isCorrectAnswer("кот", "ко́т", [], "ru")).toBe(true);
+    expect(isCorrectAnswer("ее", "её", [], "ru")).toBe(true);
+    expect(isCorrectAnswer("eto", "это", [{ text: "это" }, { text: "eto", context: "romanization" }], "ru")).toBe(true);
+  });
+
+  it("still requires Polish and French diacritics", () => {
+    expect(isCorrectAnswer("byc", "być", [], "pl")).toBe(false);
+    expect(isCorrectAnswer("cafe", "café", [], "fr")).toBe(false);
+    expect(isCorrectAnswer("café", "café", [], "fr")).toBe(true);
+  });
+
+  it("strips a leading to only for English answers", () => {
+    expect(isCorrectAnswer("want", "to want", [], "en")).toBe(true);
+    expect(isCorrectAnswer("to być", "być", [], "pl")).toBe(false);
+  });
+
   it("accepts der, die, or das for the German article", () => {
     const accepted = [
       { text: "der", context: "masculine" },

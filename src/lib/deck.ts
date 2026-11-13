@@ -6,11 +6,11 @@ export const RANGES: { id: RangeId; label: string; hint: string; start: number; 
   { id: "top100", label: "First 100", hint: "Most frequent lemmas", start: 0, end: 100 },
   { id: "top250", label: "First 250", hint: "Core beginner set", start: 0, end: 250 },
   { id: "top500", label: "First 500", hint: "Solid everyday coverage", start: 0, end: 500 },
-  { id: "all", label: "All 1000", hint: "Full deck", start: 0, end: 1000 },
+  { id: "all", label: "All", hint: "Full deck", start: 0, end: Number.POSITIVE_INFINITY },
   { id: "band2", label: "101–200", hint: "Next hundred", start: 100, end: 200 },
   { id: "band3", label: "201–300", hint: "Keep stretching", start: 200, end: 300 },
   { id: "band4", label: "301–500", hint: "Mid-frequency", start: 300, end: 500 },
-  { id: "band5", label: "501–1000", hint: "Less common half", start: 500, end: 1000 },
+  { id: "band5", label: "501+", hint: "Less common words", start: 500, end: Number.POSITIVE_INFINITY },
   { id: "mine", label: "My words", hint: "Words you added", start: 0, end: 0 },
 ];
 
@@ -23,31 +23,60 @@ export function formText(entry: Entry, lang: LangCode): string {
   return entry.forms[lang]?.text ?? "";
 }
 
-/** Rank used to order a pair: prefer the non-English side, then answer, then prompt. */
+/** Answer-language rank, then prompt rank, then the best rank stored on the card. */
 export function pairRank(entry: Entry, from: LangCode, to: LangCode): number {
-  const preferred = to !== "en" ? to : from !== "en" ? from : to;
-  const rank = entry.ranks[preferred] ?? entry.ranks[to] ?? entry.ranks[from];
-  return rank ?? Number.MAX_SAFE_INTEGER;
+  const direct = entry.ranks[to] ?? entry.ranks[from];
+  if (direct != null) return direct;
+  let best = Number.MAX_SAFE_INTEGER;
+  for (const value of Object.values(entry.ranks)) {
+    if (typeof value === "number" && value < best) best = value;
+  }
+  return best;
 }
 
-function inPrimaryDeck(entry: Entry, from: LangCode, to: LangCode): boolean {
-  if (entry.custom) return true;
-  const langs = new Set([from, to]);
-  if (langs.has("pl") && langs.has("de")) return entry.ranks.pl != null;
-  if (langs.has("de") && langs.has("en")) return entry.ranks.de != null;
-  if (langs.has("pl") && langs.has("en")) return entry.ranks.pl != null;
-  return true;
+function betterConcept(entry: Entry, prev: Entry, from: LangCode, to: LangCode): boolean {
+  const rank = pairRank(entry, from, to);
+  const prevRank = pairRank(prev, from, to);
+  if (rank !== prevRank) return rank < prevRank;
+  return entry.id.localeCompare(prev.id) < 0;
+}
+
+/** Pairs with no frequency list share concepts, so the same English head is one card. */
+function dedupeConcepts(entries: Entry[], from: LangCode, to: LangCode): Entry[] {
+  const kept = new Map<string, Entry>();
+  const customs: Entry[] = [];
+  for (const entry of entries) {
+    if (entry.custom) {
+      customs.push(entry);
+      continue;
+    }
+    const key = entry.concept || entry.id;
+    const prev = kept.get(key);
+    if (!prev || betterConcept(entry, prev, from, to)) kept.set(key, entry);
+  }
+  return [...kept.values(), ...customs];
 }
 
 export function entriesForPair(entries: Entry[], from: LangCode, to: LangCode): Entry[] {
   if (from === to) return [];
-  return entries
-    .filter((entry) => hasForm(entry, from) && hasForm(entry, to) && inPrimaryDeck(entry, from, to))
-    .sort((a, b) => {
-      const delta = pairRank(a, from, to) - pairRank(b, from, to);
-      if (delta !== 0) return delta;
-      return a.id.localeCompare(b.id);
-    });
+  const usable = entries.filter((entry) => hasForm(entry, from) && hasForm(entry, to));
+  // A language that stores frequency ranks keeps that ranked deck (Polish list,
+  // German list, …). Pairs with no ranks use every card that has both forms.
+  const rankLang = ([to, from] as const).find((code) =>
+    usable.some((entry) => !entry.custom && entry.ranks[code] != null),
+  );
+  let chosen = usable;
+  if (rankLang) {
+    const ranked = usable.filter((entry) => entry.custom || entry.ranks[rankLang] != null);
+    if (ranked.some((entry) => !entry.custom)) chosen = ranked;
+  }
+  if (chosen === usable) chosen = dedupeConcepts(chosen, from, to);
+  chosen.sort((a, b) => {
+    const delta = pairRank(a, from, to) - pairRank(b, from, to);
+    if (delta !== 0) return delta;
+    return a.id.localeCompare(b.id);
+  });
+  return chosen;
 }
 
 export function wordsForRange(entries: Entry[], range: RangeId): Entry[] {

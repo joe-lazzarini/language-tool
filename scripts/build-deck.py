@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Merge Polish KWJP lemmas and German UD-GSD lemmas into a multilingual deck."""
+"""Merge Polish KWJP lemmas and German UD-GSD lemmas into a multilingual deck.
+
+Extra registry languages are attached by scripts/extra_langs.py. The app loads
+public/data/catalog.json plus one public/data/langs/<code>.json per language.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,7 @@ import json
 import re
 from pathlib import Path
 
+from extra_langs import attach_extra_languages, write_split_deck
 from families import (
     DE_BACKFILL_GLOSSES,
     DE_FAMILIES,
@@ -25,7 +30,6 @@ PL_EN = Path(__file__).resolve().parent / "pl-en.json"
 DE_LEMMAS = Path(__file__).resolve().parent / "de-lemmas.txt"
 DE_GLOSSES = Path(__file__).resolve().parent / "de-glosses.tsv"
 PL_DE = Path(__file__).resolve().parent / "pl-de.tsv"
-OUT = ROOT / "public" / "data" / "words.json"
 
 TARGET = 1000
 
@@ -337,22 +341,24 @@ def main() -> None:
             }
         )
 
+    attach_extra_languages(entries)
+    coverage = {
+        "en-pl": coverage_count(entries, "en", "pl"),
+        "pl-en": coverage_count(entries, "pl", "en"),
+        "en-de": coverage_count(entries, "en", "de"),
+        "de-en": coverage_count(entries, "de", "en"),
+        "pl-de": coverage_count(entries, "pl", "de"),
+        "de-pl": coverage_count(entries, "de", "pl"),
+    }
+    for entry in entries:
+        for code in entry.get("forms") or {}:
+            coverage[f"forms-{code}"] = coverage.get(f"forms-{code}", 0) + 1
+
     payload = {
         "meta": {
-            "title": "English, Polish, and German lemma decks",
-            "languages": [
-                {"code": "en", "name": "English", "nativeName": "English"},
-                {"code": "pl", "name": "Polish", "nativeName": "Polski"},
-                {"code": "de", "name": "German", "nativeName": "Deutsch"},
-            ],
-            "coverage": {
-                "en-pl": coverage_count(entries, "en", "pl"),
-                "pl-en": coverage_count(entries, "pl", "en"),
-                "en-de": coverage_count(entries, "en", "de"),
-                "de-en": coverage_count(entries, "de", "en"),
-                "pl-de": coverage_count(entries, "pl", "de"),
-                "de-pl": coverage_count(entries, "de", "pl"),
-            },
+            "title": "Common-word decks aligned across the language registry",
+            "languages": [],
+            "coverage": coverage,
             "sources": {
                 "polishFrequency": {
                     "name": "Wiktionary: Frequency lists/Polish/KWJP",
@@ -373,21 +379,34 @@ def main() -> None:
                     "url": "https://en.wiktionary.org/",
                     "license": "CC BY-SA 4.0 / GFDL",
                 },
+                "extraTranslations": {
+                    "name": "English Wiktionary translations",
+                    "url": "https://en.wiktionary.org/",
+                    "license": "CC BY-SA 4.0 / GFDL",
+                    "note": (
+                        "Spanish, French, Italian, Portuguese, Dutch, Russian, and Japanese citation forms. "
+                        "Closed-class families are hand-checked in scripts/extra_langs.py. Open-class rows are "
+                        "the first translation sense and can be approximate. Russian romanization is a simple "
+                        "letter mapping. Japanese romaji comes from the Wiktionary tr= parameter when present."
+                    ),
+                },
             },
             "gaps": (
                 "English↔Polish uses the 1000 KWJP lemmas after family merges. English↔German uses the 1000 "
                 "UD-GSD lemmas after family merges. Polish↔German joins those lists through a citation-form "
                 "mapping; function words without a clear equivalent stay on the English side only. Frequency "
                 "ranks are language-specific, so the 'first 100' of EN→DE is not the same set as the 'first 100' "
-                "of EN→PL. Closed-class gender families (ten/ta/to, der/die/das) are one card; aspectual pairs "
-                "and distinct lexemes that only overlap in English stay separate."
+                "of EN→PL. Other pairs (for example Spanish↔French) use every concept that has both translations, "
+                "deduped by the English citation head and ordered by the best Polish or German rank. "
+                "Closed-class gender families (ten/ta/to, der/die/das) are one card; aspectual pairs and distinct "
+                "lexemes that only overlap in English stay separate on the frequency lists. Russian and Japanese "
+                "have no articles, so those cards are absent from pairs with those languages. Not every concept "
+                "has a translation in every language."
             ),
         },
         "entries": entries,
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("wrote", OUT)
+    write_split_deck(payload["meta"], entries)
     print("entries", len(entries))
     print("coverage", payload["meta"]["coverage"])
     missing_gloss = [

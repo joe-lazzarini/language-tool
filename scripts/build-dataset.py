@@ -499,7 +499,7 @@ def main() -> None:
     OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("wrote", OUT, "count", len(words), "skipped", len(skipped))
     print("skipped sample", skipped[:30])
-    print("Run `npm run deck` next to rebuild the multilingual public/data/words.json.")
+    print("Run `npm run deck` next to rebuild public/data/catalog.json and public/data/langs/.")
 
 
 if __name__ == "__main__":
