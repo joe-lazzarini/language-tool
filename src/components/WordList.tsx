@@ -18,6 +18,10 @@ export function WordList({
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const ordered = [...words].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
 
+  function primaryCode(word: CustomWord): typeof LANG_CODES[number] | null {
+    return LANG_CODES.find((code) => word.forms[code]?.text.trim()) ?? null;
+  }
+
   return (
     <div className="stack">
       <header className="hero compact">
@@ -40,15 +44,18 @@ export function WordList({
           <p className="hint">No saved words yet. Add one and it will show up in study and quiz.</p>
         ) : (
           <ul className="word-list">
-            {ordered.map((word) => (
+            {ordered.map((word) => {
+              const primary = primaryCode(word);
+              const title = primary ? word.forms[primary]?.text || "—" : "—";
+              return (
               <li key={word.id} className="word-row">
                 <div className="word-main">
-                  <strong>{word.forms.en?.text || "—"}</strong>
+                  <strong>{title}</strong>
                   <span className="pos">{word.pos}</span>
                 </div>
                 <p className="hint word-gloss">
-                  {LANG_CODES.filter((code) => code !== "en")
-                    .map((code) => `${languageName(code)}: ${word.forms[code]?.text || "—"}`)
+                  {LANG_CODES.filter((code) => code !== primary)
+                    .map((code) => `${languageName(code)}: ${word.forms[code]?.text}`)
                     .join(" · ")}
                 </p>
                 <div className="row-actions">
@@ -78,7 +85,8 @@ export function WordList({
                   )}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

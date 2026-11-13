@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { LANG_CODES } from "../lib/languages";
 import { lookupWord } from "./translate";
-import type { Entry } from "../types";
+import type { Entry, LangCode } from "../types";
+
+function withEveryLanguage(entry: Entry): Entry {
+  const forms = { ...entry.forms };
+  for (const code of LANG_CODES) {
+    if (!forms[code]) forms[code] = { text: code, accepted: [{ text: code }] };
+  }
+  return { ...entry, forms };
+}
 
 const deck: Entry[] = [
   {
@@ -60,7 +69,7 @@ describe("lookupWord", () => {
       called = true;
       throw new Error("network");
     }) as typeof fetch;
-    const draft = await lookupWord("być", "pl", deck, fetchImpl);
+    const draft = await lookupWord("być", "pl", [withEveryLanguage(deck[0])], fetchImpl);
     expect(called).toBe(false);
     expect(draft.pos).toBe("verb");
     expect(draft.forms.en?.accepted.map((item) => item.text)).toEqual(["to be", "be"]);

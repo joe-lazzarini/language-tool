@@ -109,6 +109,37 @@ describe("storage and deck merge", () => {
     const edited = toEntry(word("custom-2", "2024-01-01T00:00:00.000Z", "tomcat"));
     expect(withCustomEntries([bundled], [edited]).map((item) => item.id)).toEqual(["pl-9", "custom-2"]);
   });
+
+  it("keeps hiding a saved en/pl/de card when the bundled card gained more languages", () => {
+    const saved = word("custom-1", "2024-01-01T00:00:00.000Z");
+    const bundled: Entry = {
+      id: "pl-9",
+      pos: "noun",
+      ranks: { pl: 9 },
+      forms: {
+        ...saved.forms,
+        es: { text: "gato", accepted: [{ text: "gato" }] },
+      },
+    };
+    expect(withCustomEntries([bundled], [toEntry(saved)]).map((item) => item.id)).toEqual(["pl-9"]);
+  });
+
+  it("loads an older three-language word and a newer Spanish form", () => {
+    const saved = word("custom-1", "2024-01-01T00:00:00.000Z");
+    const parsed = parseStoredWord({
+      ...saved,
+      forms: {
+        ...saved.forms,
+        es: { text: "gato", accepted: [{ text: "gato" }] },
+        xx: { text: "nope", accepted: [{ text: "nope" }] },
+      },
+    });
+    expect(parsed?.forms.en?.text).toBe("cat");
+    expect(parsed?.forms.pl?.text).toBe("kot");
+    expect(parsed?.forms.de?.text).toBe("Katze");
+    expect(parsed?.forms.es?.text).toBe("gato");
+    expect((parsed?.forms as Record<string, unknown>).xx).toBeUndefined();
+  });
 });
 
 describe("findDeckEntry", () => {

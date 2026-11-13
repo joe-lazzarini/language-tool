@@ -10,8 +10,10 @@ import {
   revealAnswers,
   wordsForRange,
 } from "./deck";
+import { assembleEntries } from "./loadDeck";
+import { LANG_CODES } from "./languages";
 import { isCorrectAnswer, normalizeAnswer } from "./match";
-import type { Dataset, Entry } from "../types";
+import type { Catalog, Dataset, Entry, LangCode, LangPack } from "../types";
 
 const sample: Entry[] = [
   {
@@ -208,16 +210,63 @@ describe("custom words", () => {
   });
 });
 
+function readBundledDataset(): Dataset {
+  const catalog = JSON.parse(
+    readFileSync(resolve(process.cwd(), "public/data/catalog.json"), "utf8"),
+  ) as Catalog;
+  const packs: Partial<Record<LangCode, LangPack>> = {};
+  for (const code of LANG_CODES) {
+    packs[code] = JSON.parse(
+      readFileSync(resolve(process.cwd(), `public/data/langs/${code}.json`), "utf8"),
+    ) as LangPack;
+  }
+  return { meta: catalog.meta, entries: assembleEntries(catalog, packs) };
+}
+
+describe("unranked pairs", () => {
+  const shared: Entry[] = [
+    {
+      id: "pl-cat",
+      pos: "noun",
+      concept: "cat",
+      ranks: { pl: 10 },
+      forms: {
+        pl: { text: "kot", accepted: [{ text: "kot" }] },
+        en: { text: "cat", accepted: [{ text: "cat" }] },
+        es: { text: "gato", accepted: [{ text: "gato" }] },
+        fr: { text: "chat", accepted: [{ text: "chat" }] },
+      },
+    },
+    {
+      id: "de-cat",
+      pos: "noun",
+      concept: "cat",
+      ranks: { de: 4 },
+      forms: {
+        de: { text: "Katze", accepted: [{ text: "Katze" }] },
+        en: { text: "cat", accepted: [{ text: "cat" }] },
+        es: { text: "gato", accepted: [{ text: "gato" }] },
+        fr: { text: "chat", accepted: [{ text: "chat" }] },
+      },
+    },
+  ];
+
+  it("keeps a frequency list when one side has ranks and dedupes pairs that do not", () => {
+    expect(entriesForPair(shared, "en", "pl").map((item) => item.id)).toEqual(["pl-cat"]);
+    expect(entriesForPair(shared, "en", "de").map((item) => item.id)).toEqual(["de-cat"]);
+    expect(entriesForPair(shared, "es", "fr").map((item) => item.id)).toEqual(["de-cat"]);
+    expect(entriesForPair(shared, "pl", "es").map((item) => item.id)).toEqual(["pl-cat"]);
+  });
+});
+
 describe("bundled multilingual deck", () => {
-  const dataset = JSON.parse(
-    readFileSync(resolve(process.cwd(), "public/data/words.json"), "utf8"),
-  ) as Dataset;
+  const dataset = readBundledDataset();
 
   function polishCards() {
     return entriesForPair(dataset.entries, "en", "pl");
   }
 
-  function texts(entry: Entry, lang: "en" | "pl" | "de") {
+  function texts(entry: Entry, lang: LangCode) {
     return acceptedFor(entry, lang).map((item) => normalizeAnswer(item));
   }
 
@@ -263,6 +312,29 @@ describe("bundled multilingual deck", () => {
       return pl.includes("tu") || pl.includes("tutaj");
     });
     expect(matches).toHaveLength(1);
+  });
+
+  it("aligns closed-class cards across the added languages", () => {
+    const ten = polishCards().find((entry) => texts(entry, "pl").includes("ten"));
+    expect(ten).toBeTruthy();
+    expect(texts(ten!, "es")).toEqual(expect.arrayContaining(["este", "esta", "esto"]));
+    expect(texts(ten!, "ru")).toEqual(expect.arrayContaining(["это", "eto"]));
+    expect(texts(ten!, "ja")).toEqual(expect.arrayContaining(["これ", "kore"]));
+    expect(isCorrectAnswer("eto", expectedFor(ten!, "ru"), acceptedFor(ten!, "ru"), "ru")).toBe(true);
+    expect(isCorrectAnswer("kore", expectedFor(ten!, "ja"), acceptedFor(ten!, "ja"), "ja")).toBe(true);
+    expect(isCorrectAnswer("это", expectedFor(ten!, "ru"), acceptedFor(ten!, "ru"), "ru")).toBe(true);
+
+    const german = entriesForPair(dataset.entries, "en", "de");
+    const article = german.find((entry) => texts(entry, "de").includes("der"));
+    expect(article?.forms.ru).toBeUndefined();
+    expect(article?.forms.ja).toBeUndefined();
+    expect(texts(article!, "es")).toEqual(expect.arrayContaining(["el", "la"]));
+    expect(texts(article!, "nl")).toEqual(expect.arrayContaining(["de", "het"]));
+  });
+
+  it("has a shared deck for pairs that are not on a frequency list", () => {
+    expect(entriesForPair(dataset.entries, "es", "fr").length).toBeGreaterThan(400);
+    expect(entriesForPair(dataset.entries, "en", "ja").length).toBeGreaterThan(400);
   });
 
   it("accepts any English synonym listed on a card", () => {

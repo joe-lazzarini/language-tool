@@ -52,14 +52,27 @@ export function toEntry(word: CustomWord): Entry {
   };
 }
 
+function answerKey(form: Form | undefined): string {
+  return (form?.accepted ?? [])
+    .map((item) => normalizeAnswer(item.text))
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
+
 export function wordSignature(word: { forms: Partial<Record<LangCode, Form>> }): string {
-  return LANG_CODES.map((code) => {
-    const answers = (word.forms[code]?.accepted ?? [])
-      .map((item) => normalizeAnswer(item.text))
-      .filter(Boolean)
-      .sort();
-    return `${code}:${answers.join("|")}`;
-  }).join("§");
+  return LANG_CODES.map((code) => `${code}:${answerKey(word.forms[code])}`).join("§");
+}
+
+/** True when every language the custom card filled matches the bundled card.
+ *  Extra bundled languages (added after the word was saved) do not count. */
+export function repeatsBundled(
+  custom: { forms: Partial<Record<LangCode, Form>> },
+  bundled: { forms: Partial<Record<LangCode, Form>> },
+): boolean {
+  const codes = LANG_CODES.filter((code) => answerKey(custom.forms[code]));
+  if (codes.length === 0) return false;
+  return codes.every((code) => answerKey(bundled.forms[code]) === answerKey(custom.forms[code]));
 }
 
 export function entrySignature(entry: Entry): string {
@@ -68,8 +81,7 @@ export function entrySignature(entry: Entry): string {
 
 /** Drop custom cards that repeat a bundled card so the full deck does not quiz them twice. */
 export function withCustomEntries(bundled: Entry[], custom: Entry[]): Entry[] {
-  const known = new Set(bundled.map((entry) => entrySignature(entry)));
-  const extras = custom.filter((entry) => entry.custom && !known.has(entrySignature(entry)));
+  const extras = custom.filter((entry) => entry.custom && !bundled.some((item) => repeatsBundled(entry, item)));
   return [...bundled, ...extras];
 }
 

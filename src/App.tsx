@@ -17,19 +17,23 @@ import {
   sessionKicker,
   wordsForRange,
 } from "./lib/deck";
+import { assembleEntries, loadCatalog, loadLangPack } from "./lib/loadDeck";
 import { useCustomWords } from "./lib/useCustomWords";
 import {
   answerPlaceholder,
   isLangCode,
   LANG_CODES,
+  languageByCode,
   languageName,
+  languageOptionLabel,
   LANGUAGES,
+  otherLanguage,
   pairHint,
   pairLabel,
   SPECIAL_LETTERS,
 } from "./lib/languages";
 import { isCorrectAnswer } from "./lib/match";
-import type { CardResult, Dataset, Entry, LangCode, Mode, Settings } from "./types";
+import type { CardResult, Catalog, Entry, LangCode, LangPack, Mode, Settings } from "./types";
 
 const STORAGE_KEY = "slowka-settings-v2";
 const LEGACY_STORAGE_KEY = "slowka-settings-v1";
@@ -67,7 +71,7 @@ function loadSettings(): Settings {
       ...defaultSettings,
       ...parsed,
       from,
-      to: to === from ? (from === "pl" ? "en" : "pl") : to,
+      to: to === from ? otherLanguage(from) : to,
       range,
     };
   } catch {
@@ -78,32 +82,33 @@ function loadSettings(): Settings {
 function LanguagePicker({
   label,
   value,
-  locked,
   onChange,
 }: {
   label: string;
   value: LangCode;
-  locked?: LangCode;
   onChange: (code: LangCode) => void;
 }) {
+  const id = `lang-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <div className="field">
-      <span className="label">{label}</span>
-      <div className="segment">
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        className="textin"
+        value={value}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (isLangCode(next)) onChange(next);
+        }}
+      >
         {LANGUAGES.map((lang) => (
-          <button
-            key={lang.code}
-            type="button"
-            className={value === lang.code ? "on" : ""}
-            onClick={() => onChange(lang.code)}
-          >
-            {lang.name}
-          </button>
+          <option key={lang.code} value={lang.code}>
+            {languageOptionLabel(lang)}
+          </option>
         ))}
-      </div>
-      {locked && value === locked ? (
-        <p className="hint">Pick a different language from the other side.</p>
-      ) : null}
+      </select>
     </div>
   );
 }
@@ -130,12 +135,12 @@ function Home({
   const sameLanguage = settings.from === settings.to;
 
   function setFrom(from: LangCode) {
-    const to = from === settings.to ? (LANG_CODES.find((code) => code !== from) ?? "pl") : settings.to;
+    const to = from === settings.to ? otherLanguage(from) : settings.to;
     setSettings({ ...settings, from, to });
   }
 
   function setTo(to: LangCode) {
-    const from = to === settings.from ? (LANG_CODES.find((code) => code !== to) ?? "en") : settings.from;
+    const from = to === settings.from ? otherLanguage(to) : settings.from;
     setSettings({ ...settings, from, to });
   }
 
@@ -146,7 +151,7 @@ function Home({
   return (
     <div className="stack">
       <header className="hero">
-        <p className="eyebrow">English · Polish · German</p>
+        <p className="eyebrow">Any two languages</p>
         <h1>Słówka</h1>
         <p className="lede">
           Practice common lemmas in their dictionary form. Choose any prompt and answer language,
@@ -221,8 +226,8 @@ function Home({
           <LanguagePicker label="Answer" value={settings.to} onChange={setTo} />
         </div>
         <p className="hint pair-hint">
-          Default is English → Polish. Now {pairLabel(settings.from, settings.to)} —{" "}
-          {pairHint(settings.from, settings.to)}
+          {pairLabel(settings.from, settings.to)} — {pairHint(settings.from, settings.to)} Saved in this browser.
+          A new visit starts from English to Polish.
         </p>
 
         <div className="field">
@@ -325,7 +330,7 @@ function Session({
 
   function check(given = input) {
     if (!word || revealed) return;
-    const ok = isCorrectAnswer(given, expected, acceptedFor(word, to));
+    const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     setCorrect(ok);
     setRevealed(true);
     setResults((prev) => [...prev, { word, correct: ok, given: given.trim() }]);
@@ -426,7 +431,9 @@ function Session({
           {sessionKicker(from, to)}
           <span className="pos">{word.custom ? "your word · " : ""}{word.pos}</span>
         </p>
-        <p className="prompt">{prompt}</p>
+        <p className="prompt" lang={languageByCode(from).locale}>
+          {prompt}
+        </p>
         {revealed && (
           <div className="feedback" role="status">
             {correct === true && <p className="ok-text">Correct</p>}
@@ -452,9 +459,11 @@ function Session({
           autoComplete="off"
           spellCheck={false}
           enterKeyHint={revealed ? "go" : "done"}
+          lang={languageByCode(to).locale}
           placeholder={answerPlaceholder(to)}
           disabled={revealed}
         />
+        {languageByCode(to).answerHint ? <p className="hint">{languageByCode(to).answerHint}</p> : null}
         <SpecialKeys
           letters={!revealed ? specials : []}
           label={`${languageName(to)} letters`}
@@ -484,7 +493,8 @@ function Session({
 type Screen = "home" | "add" | "list";
 
 export function App() {
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [packs, setPacks] = useState<Partial<Record<LangCode, LangPack>>>({});
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
   const [session, setSession] = useState<Entry[] | null>(null);
@@ -493,24 +503,54 @@ export function App() {
   const wordsApi = useCustomWords();
 
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/words.json`)
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not load the word list.");
-        return response.json() as Promise<Dataset>;
+    let cancelled = false;
+    loadCatalog()
+      .then((next) => {
+        if (!cancelled) setCatalog(next);
       })
-      .then(setDataset)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pair = [settings.from, settings.to];
+    const rest = LANG_CODES.filter((code) => code !== settings.from && code !== settings.to);
+    async function load(codes: readonly LangCode[]) {
+      const rows = await Promise.all(codes.map(async (code) => [code, await loadLangPack(code)] as const));
+      if (cancelled) return;
+      setPacks((prev) => {
+        const next = { ...prev };
+        for (const [code, pack] of rows) next[code] = pack;
+        return next;
+      });
+    }
+    load(pair)
+      .then(() => load(rest))
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.from, settings.to]);
 
   function setSettings(next: Settings) {
     setSettingsState(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
 
+  const entries = useMemo(() => (catalog ? assembleEntries(catalog, packs) : []), [catalog, packs]);
+  const pairReady = Boolean(catalog && packs[settings.from] && packs[settings.to]);
+  const dictionariesReady = LANG_CODES.every((code) => packs[code]);
   const customEntries = useMemo(() => wordsApi.words.map(toEntry), [wordsApi.words]);
   const studyEntries = useMemo(
-    () => (dataset ? withCustomEntries(dataset.entries, customEntries) : customEntries),
-    [dataset, customEntries],
+    () => (catalog ? withCustomEntries(entries, customEntries) : customEntries),
+    [catalog, entries, customEntries],
   );
   const pairEntries = useMemo(() => {
     const source = settings.range === "mine" ? customEntries : studyEntries;
@@ -539,8 +579,8 @@ export function App() {
             onSignOut={() => void wordsApi.signOut()}
           />
         )}
-        {!dataset && !error && <p className="lede">Loading the decks…</p>}
-        {dataset && !session && screen === "home" && (
+        {!pairReady && !error && screen !== "list" && <p className="lede">Loading the decks…</p>}
+        {pairReady && !session && screen === "home" && (
           <Home
             settings={settings}
             setSettings={setSettings}
@@ -555,9 +595,12 @@ export function App() {
             onList={() => setScreen("list")}
           />
         )}
-        {dataset && !session && screen === "add" && (
+        {!session && screen === "add" && !dictionariesReady && !error && (
+          <p className="lede">Loading dictionaries…</p>
+        )}
+        {!session && screen === "add" && dictionariesReady && (
           <AddWord
-            deck={dataset.entries}
+            deck={entries}
             initial={editing}
             onCancel={() => {
               setEditing(null);
@@ -570,7 +613,7 @@ export function App() {
             }}
           />
         )}
-        {dataset && !session && screen === "list" && (
+        {!session && screen === "list" && (
           <WordList
             words={wordsApi.words}
             onAdd={() => {
@@ -585,7 +628,7 @@ export function App() {
             onBack={() => setScreen("home")}
           />
         )}
-        {dataset && session && (
+        {session && (
           <Session
             words={session}
             mode={settings.mode}
@@ -596,16 +639,15 @@ export function App() {
         )}
         <footer className="foot">
           <p>
-            Polish frequency:{" "}
-            <a href="https://en.wiktionary.org/wiki/Wiktionary:Frequency_lists/Polish/KWJP">
-              KWJP via Wiktionary
-            </a>
-            . German frequency:{" "}
-            <a href="https://universaldependencies.org/treebanks/de_gsd/index.html">
-              Universal Dependencies German-GSD
-            </a>
-            . Glosses: English Wiktionary (CC BY-SA). Words you add are looked up in that deck, then
-            English Wiktionary and{" "}
+            {catalog
+              ? Object.values(catalog.meta.sources).map((source, index) => (
+                  <span key={source.name}>
+                    {index > 0 ? " · " : "Sources: "}
+                    <a href={source.url}>{source.name}</a>
+                  </span>
+                ))
+              : "Sources load with the deck."}{" "}
+            Words you add are looked up in that deck, then English Wiktionary and{" "}
             <a href="https://mymemory.translated.net/">MyMemory</a>.
           </p>
         </footer>

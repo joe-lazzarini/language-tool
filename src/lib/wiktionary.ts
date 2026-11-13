@@ -1,17 +1,16 @@
+import { LANGUAGES, type LangCode } from "./languages";
 import { normalizeAnswer } from "./match";
-import type { AcceptedAnswer, LangCode } from "../types";
+import type { AcceptedAnswer } from "../types";
 
-const LANG_NAME: Record<LangCode, string> = {
-  en: "English",
-  pl: "Polish",
-  de: "German",
-};
+const LANG_NAME: Record<LangCode, string> = Object.fromEntries(
+  LANGUAGES.map((item) => [item.code, item.wiktionary]),
+) as Record<LangCode, string>;
 
-const NAME_TO_CODE: Record<string, LangCode> = {
-  English: "en",
-  Polish: "pl",
-  German: "de",
-};
+const NAME_TO_CODE: Record<string, LangCode> = {};
+for (const item of LANGUAGES) {
+  NAME_TO_CODE[item.wiktionary] = item.code;
+  for (const alias of item.wiktionaryAliases) NAME_TO_CODE[alias] = item.code;
+}
 
 const POS_MAP: Record<string, string> = {
   noun: "noun",

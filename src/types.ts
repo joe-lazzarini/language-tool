@@ -1,4 +1,7 @@
-export type LangCode = "en" | "pl" | "de";
+import type { LangCode } from "./lib/languages";
+
+export type { LangCode };
+
 export type Mode = "study" | "quiz";
 
 export type AcceptedAnswer = {
@@ -17,6 +20,11 @@ export type Entry = {
   pos: string;
   ranks: Partial<Record<LangCode, number>>;
   forms: Partial<Record<LangCode, Form>>;
+  /**
+   * Shared concept id (usually the English citation head).
+   * Pairs without a frequency list collapse entries that share one.
+   */
+  concept?: string;
   /** Saved by the user. Included in My words and the full deck, not frequency bands. */
   custom?: boolean;
 };
@@ -29,40 +37,40 @@ export type CustomWord = {
   updatedAt: string;
 };
 
-export type LanguageInfo = {
-  code: LangCode;
+export type DeckSource = {
   name: string;
-  nativeName: string;
+  url: string;
+  corpus?: string;
+  note?: string;
+  citation?: string;
+  license?: string;
 };
 
+export type DeckMeta = {
+  title: string;
+  languages: { code: string; name: string; nativeName: string; flag?: string }[];
+  coverage: Record<string, number>;
+  sources: Record<string, DeckSource>;
+  gaps: string;
+};
+
+export type CatalogEntry = {
+  id: string;
+  pos: string;
+  ranks: Partial<Record<LangCode, number>>;
+  concept?: string;
+};
+
+export type Catalog = {
+  meta: DeckMeta;
+  entries: CatalogEntry[];
+};
+
+/** Per-language forms, keyed by catalog entry id. Loaded on demand. */
+export type LangPack = Record<string, Form>;
+
 export type Dataset = {
-  meta: {
-    title: string;
-    languages: LanguageInfo[];
-    coverage: Partial<Record<string, number>>;
-    sources: {
-      polishFrequency: {
-        name: string;
-        url: string;
-        corpus: string;
-        note: string;
-        citation: string;
-      };
-      germanFrequency: {
-        name: string;
-        url: string;
-        corpus: string;
-        note: string;
-        citation: string;
-      };
-      glossSource: {
-        name: string;
-        url: string;
-        license: string;
-      };
-    };
-    gaps: string;
-  };
+  meta: DeckMeta;
   entries: Entry[];
 };
 
