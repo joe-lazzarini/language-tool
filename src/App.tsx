@@ -160,6 +160,36 @@ function Home({
       </header>
 
       <section className="panel">
+        <div className={settings.range === "mine" ? "mine-card on" : "mine-card"}>
+          <button
+            type="button"
+            className="mine-select"
+            aria-pressed={settings.range === "mine"}
+            onClick={() => setSettings({ ...settings, range: "mine" })}
+          >
+            <span className="mine-card-title">
+              My words
+              {settings.range === "mine" ? <span className="mine-selected">Selected</span> : null}
+            </span>
+            <span className="mine-card-hint">
+              {customCount === 0
+                ? "No saved words yet"
+                : `${customCount} saved ${customCount === 1 ? "word" : "words"}`}
+            </span>
+            <span className="mine-count" aria-hidden="true">
+              {customCount}
+            </span>
+          </button>
+          <div className="tool-row">
+            <button type="button" className="mine-add" onClick={onAdd}>
+              Add a word
+            </button>
+            <button type="button" className="mine-list" onClick={onList}>
+              Your words{customCount ? ` (${customCount})` : ""}
+            </button>
+          </div>
+        </div>
+
         <div className="field">
           <span className="label">Mode</span>
           <div className="segment">
@@ -203,7 +233,7 @@ function Home({
         <div className="field">
           <span className="label">Which words</span>
           <div className="chips">
-            {RANGES.map((range) => (
+            {RANGES.filter((range) => range.id !== "mine").map((range) => (
               <button
                 key={range.id}
                 type="button"
@@ -240,15 +270,6 @@ function Home({
               ? " Your words are in All and in My words."
               : ""}
           </p>
-        </div>
-
-        <div className="tool-row">
-          <button type="button" className="secondary" onClick={onAdd}>
-            Add a word
-          </button>
-          <button type="button" className="secondary" onClick={onList}>
-            Your words{customCount ? ` (${customCount})` : ""}
-          </button>
         </div>
 
         <button type="button" className="primary" onClick={onStart} disabled={pool === 0 || sameLanguage}>

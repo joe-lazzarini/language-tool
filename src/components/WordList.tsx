@@ -21,13 +21,21 @@ export function WordList({
   return (
     <div className="stack">
       <header className="hero compact">
-        <p className="eyebrow">Your deck</p>
+        <p className="eyebrow">Your deck{words.length ? ` · ${words.length} saved` : ""}</p>
         <h1>Your words</h1>
         <p className="lede">
           These cards join the full deck and My words, in every language direction you filled in.
         </p>
       </header>
       <section className="panel">
+        <div className="actions">
+          <button type="button" className="mine-add" onClick={onAdd}>
+            Add a word
+          </button>
+          <button type="button" className="secondary" onClick={onBack}>
+            Back
+          </button>
+        </div>
         {ordered.length === 0 ? (
           <p className="hint">No saved words yet. Add one and it will show up in study and quiz.</p>
         ) : (
@@ -73,14 +81,6 @@ export function WordList({
             ))}
           </ul>
         )}
-        <div className="actions">
-          <button type="button" className="primary" onClick={onAdd}>
-            Add a word
-          </button>
-          <button type="button" className="secondary" onClick={onBack}>
-            Back
-          </button>
-        </div>
       </section>
     </div>
   );
