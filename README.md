@@ -60,17 +60,14 @@ The project does not ship with a Firebase project. Create one, then set six vari
 3. **Build → Authentication → Get started → Sign-in method → Google → Enable**. Pick a support email and save.
 4. **Authentication → Settings → Authorized domains → Add domain** and add `joe-lazzarini.github.io`. `localhost` is already on the list, so local `npm run dev` can sign in too. The authorized domain is the host only, not the `/language-tool/` path.
 5. **Build → Firestore Database → Create database**. Start in **production mode**. Pick a region close to you (for example `europe-west1`).
-6. Deploy `firestore.rules` from this repo (production mode denies all reads and writes until you do):
+6. Give GitHub a key so the Pages workflow can publish `firestore.rules` with the site. Production mode denies every read and write until those rules are deployed.
 
-   ```bash
-   npm install -g firebase-tools
-   firebase login
-   firebase deploy --only firestore:rules --project YOUR_PROJECT_ID
-   ```
+   - Firebase console → Project settings (gear) → **Service accounts** → **Generate new private key**. Confirm the download. That JSON is the Firebase Admin SDK key. Do not commit it.
+   - GitHub → **Settings → Environments → github-pages → Environment secrets → Add secret**.
+   - Name: `FIREBASE_SERVICE_ACCOUNT`
+   - Value: paste the whole JSON file.
 
-   Or open **Firestore → Rules**, paste the contents of `firestore.rules`, and publish. The rules allow a signed-in user to read and write only `users/{their uid}/words/{wordId}`.
-
-7. On GitHub, open this repo → **Settings → Environments → github-pages**. Under **Environment variables**, add these. Use the values from the web app config in step 2. The same names work as environment secrets if you prefer; the workflow checks variables first. Do not create a separate environment.
+7. On the same **github-pages** environment, under **Environment variables**, add these. Use the values from the web app config in step 2. The same names work as environment secrets if you prefer; the workflow checks variables first. Do not create a separate environment.
 
    | Name | Firebase field |
    | --- | --- |
@@ -81,7 +78,7 @@ The project does not ship with a Firebase project. Create one, then set six vari
    | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
    | `VITE_FIREBASE_APP_ID` | `appId` |
 
-8. **Actions → Deploy GitHub Pages → Run workflow** (or push a commit). The site rebuilds with the config. Sign in with Google on the live site and add a word; it should appear on another browser after you sign in there.
+8. **Actions → Deploy GitHub Pages → Run workflow** (or push a commit). The workflow builds the site and runs `firebase deploy --only firestore:rules`. If the service-account secret or the project id is missing, the site still publishes and the rules are left as they are. Sign in with Google on the live site and add a word; it should appear on another browser after you sign in there.
 
 For local development, put the same six values in `.env` (see `.env.example`). An incomplete config is ignored: the app shows that cloud sync is not configured and keeps using this browser.
 
