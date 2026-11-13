@@ -11,8 +11,11 @@ One concept per card. Citation form for open-class words: nominative singular no
 - **Any language pair** among English, Polish, and German. Defaults to English → Polish so existing users keep the original flow. Examples: EN→PL, PL→EN, EN→DE, DE→EN, PL→DE, DE→PL.
 - Frequency bands (first 100 / 250 / 500 / all 1000, plus later slices) and round sizes of 10, 20, 50, or the whole band. Bands follow the **answer language’s frequency list** when that language is Polish or German.
 - **Any listed answer is correct** (case-insensitive, trimmed whitespace). Diacritics are required. A leading English *to* / *a* / *an* / *the* is optional. An on-screen **ą ć ę ł ń ó ś ź ż** bar appears when the answer language is Polish; **ä ö ü ß** appears when it is German.
+- **Add a word** you came across. Type it in one language (English, Polish, or German). The app fills in the other two, you confirm or edit them, then save the card.
+- **Your words** join study and quiz: they are part of the full deck, and you can also select the **My words** band. They work in every language-pair direction. Edit or delete them from the list.
+- **Sync** is optional. Without Firebase config, words stay in this browser (`localStorage`). With Firebase, Google sign-in stores them in Firestore and the first sign-in merges words already saved on the device.
 
-No backend. The deck is bundled JSON.
+The frequency decks are bundled JSON. Custom words are the only data stored per user.
 
 ## Run locally
 
@@ -26,14 +29,58 @@ npm run dev
 Then open the URL Vite prints (usually `http://localhost:5173/language-tool/`). The `base` is `/language-tool/` so the same asset paths work on GitHub Pages.
 
 ```bash
-npm test          # unit tests for answer matching, families, and reveal UI
+npm test          # unit tests for answer matching, families, reveal UI, lookup, and sync
 npm run build     # production build to dist/
 npm run preview   # serve the production build
 ```
 
-The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages.
+Copy `.env.example` to `.env` and fill in the Firebase web config if you want cloud sync locally. Leave the values empty to stay on this browser only. Restart `npm run dev` after changing `.env`.
+
+The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The build job reads `VITE_FIREBASE_*` from the `github-pages` environment (variables, then secrets of the same name). If they are unset, the deployed site still builds and keeps words on the device.
 
 **Live site:** https://joe-lazzarini.github.io/language-tool/
+
+## Add a word
+
+1. Choose the language you saw the word in and type it.
+2. The app looks up the other two languages in this order:
+   - the bundled deck (same accepted answers and short contexts as study mode)
+   - [English Wiktionary](https://en.wiktionary.org/) (dictionary / citation forms, including gender and a short qualifier when the entry has them). Inflected forms such as *koty* or *cats* follow the lemma.
+   - [MyMemory](https://mymemory.translated.net/) if Wiktionary has no hit. Those lines are a translation memory, so check the citation form before saving.
+3. Edit the card text, the accepted answers, and the optional context, then save.
+
+Saved cards need English, Polish, and German so every direction works. Frequency bands (first 100, 101–200, and so on) stay the built-in lists. **All** includes your words. **My words** is only your words.
+
+## Cloud sync (Firebase Spark)
+
+The project does not ship with a Firebase project. Create one, then set six variables on the `github-pages` environment and redeploy. The web config is public in the built JavaScript; `firestore.rules` is what keeps each person’s words private.
+
+1. Open the [Firebase console](https://console.firebase.google.com/) and create a project. Google Analytics is optional.
+2. Project settings (gear) → **General** → **Your apps** → **Add app** → **Web** (`</>`). Register the app (nickname `slowka` is fine). You do not need Firebase Hosting. Copy the `firebaseConfig` values.
+3. **Build → Authentication → Get started → Sign-in method → Google → Enable**. Pick a support email and save.
+4. **Authentication → Settings → Authorized domains → Add domain** and add `joe-lazzarini.github.io`. `localhost` is already on the list, so local `npm run dev` can sign in too. The authorized domain is the host only, not the `/language-tool/` path.
+5. **Build → Firestore Database → Create database**. Start in **production mode**. Pick a region close to you (for example `europe-west1`).
+6. Give GitHub a key so the Pages workflow can publish `firestore.rules` with the site. Production mode denies every read and write until those rules are deployed.
+
+   - Firebase console → Project settings (gear) → **Service accounts** → **Generate new private key**. Confirm the download. That JSON is the Firebase Admin SDK key. Do not commit it.
+   - GitHub → **Settings → Environments → github-pages → Environment secrets → Add secret**.
+   - Name: `FIREBASE_SERVICE_ACCOUNT`
+   - Value: paste the whole JSON file.
+
+7. On the same **github-pages** environment, under **Environment variables**, add these. Use the values from the web app config in step 2. The same names work as environment secrets if you prefer; the workflow checks variables first. Do not create a separate environment.
+
+   | Name | Firebase field |
+   | --- | --- |
+   | `VITE_FIREBASE_API_KEY` | `apiKey` |
+   | `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` (usually `YOUR_PROJECT_ID.firebaseapp.com`) |
+   | `VITE_FIREBASE_PROJECT_ID` | `projectId` |
+   | `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
+   | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
+   | `VITE_FIREBASE_APP_ID` | `appId` |
+
+8. **Actions → Deploy GitHub Pages → Run workflow** (or push a commit). The workflow builds the site and runs `firebase deploy --only firestore:rules`. If the service-account secret or the project id is missing, the site still publishes and the rules are left as they are. Sign in with Google on the live site and add a word; it should appear on another browser after you sign in there.
+
+For local development, put the same six values in `.env` (see `.env.example`). An incomplete config is ignored: the app shows that cloud sync is not configured and keeps using this browser.
 
 ## Data
 
@@ -95,6 +142,9 @@ npm run deck    # merge Polish + German sources into public/data/words.json
 
 ```
 public/data/words.json        bundled multilingual deck
+firestore.rules               per-user Firestore rules
+firebase.json                 points the Firebase CLI at those rules
+.env.example                  Vite names for the Firebase web config
 scripts/families.py           merge rules, gender paradigms, backfill
 scripts/pl-en.json            Polish lemmas + English glosses
 scripts/de-lemmas.txt         UD-GSD rank → German lemma
@@ -103,7 +153,11 @@ scripts/pl-de.tsv             Polish lemma → German citation form
 scripts/build-dataset.py      rebuild Polish glosses
 scripts/build-deck.py         merge the multilingual deck
 src/App.tsx                   study + quiz UI
+src/components/AddWord.tsx    look up, confirm, and save a card
+src/components/WordList.tsx   edit or delete saved words
 src/components/AnswerReveal.tsx  accepted answers + context on reveal
 src/lib/deck.ts               pair filtering and session cards
+src/lib/translate.ts          deck, then Wiktionary, then MyMemory
+src/lib/customWords.ts        local store and account merge
 src/lib/match.ts              answer checking
 ```

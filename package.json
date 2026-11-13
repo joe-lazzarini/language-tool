@@ -13,6 +13,7 @@
     "deck": "python3 scripts/build-deck.py"
   },
   "dependencies": {
+    "firebase": "^11.10.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

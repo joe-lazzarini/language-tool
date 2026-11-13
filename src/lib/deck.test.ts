@@ -180,6 +180,34 @@ describe("wordsForRange", () => {
   });
 });
 
+describe("custom words", () => {
+  const custom: Entry = {
+    id: "custom-kot",
+    custom: true,
+    pos: "noun",
+    ranks: {},
+    forms: {
+      en: { text: "whisker", accepted: [{ text: "whisker" }] },
+      pl: { text: "wąs", accepted: [{ text: "wąs", context: "moustache / whisker" }] },
+      de: { text: "Schnurrhaar", accepted: [{ text: "Schnurrhaar" }] },
+    },
+  };
+
+  it("joins every language pair even without a frequency rank", () => {
+    const withCustom = [...sample, custom];
+    expect(entriesForPair(withCustom, "en", "de").map((item) => item.id)).toEqual(["de-1", "custom-kot"]);
+    expect(entriesForPair(withCustom, "pl", "de").map((item) => item.id)).toContain("custom-kot");
+    expect(entriesForPair(withCustom, "de", "pl").some((item) => item.id === "custom-kot")).toBe(true);
+  });
+
+  it("stays out of frequency bands, and is included in All and My words", () => {
+    const pair = entriesForPair([...sample, custom], "en", "pl");
+    expect(wordsForRange(pair, "top100").some((item) => item.custom)).toBe(false);
+    expect(wordsForRange(pair, "all").some((item) => item.id === "custom-kot")).toBe(true);
+    expect(wordsForRange(pair, "mine").map((item) => item.id)).toEqual(["custom-kot"]);
+  });
+});
+
 describe("bundled multilingual deck", () => {
   const dataset = JSON.parse(
     readFileSync(resolve(process.cwd(), "public/data/words.json"), "utf8"),
