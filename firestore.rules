@@ -1,8 +1,9 @@
 rules_version = '2';
 
 // Each signed-in user may read and write only documents under users/{their uid}/words.
-// The GitHub Pages workflow deploys this file when the github-pages environment
-// has FIREBASE_SERVICE_ACCOUNT and VITE_FIREBASE_PROJECT_ID set.
+// The GitHub Pages workflow releases this file through the Firebase Rules API
+// when the github-pages environment has FIREBASE_SERVICE_ACCOUNT and
+// VITE_FIREBASE_PROJECT_ID. A rules failure does not block the site deploy.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
