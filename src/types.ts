@@ -1,6 +1,6 @@
-import type { LangCode } from "./lib/languages";
+import type { LangCode, LangPair } from "./lib/languages";
 
-export type { LangCode };
+export type { LangCode, LangPair };
 
 export type Mode = "study" | "quiz";
 
@@ -33,6 +33,12 @@ export type CustomWord = {
   id: string;
   pos: string;
   forms: Partial<Record<LangCode, Form>>;
+  /**
+   * Unordered language pair this card belongs to, stored sorted.
+   * Null only when a legacy card has fewer than two filled languages and
+   * cannot be placed on a pair. Those cards stay stored and are not listed.
+   */
+  pair: LangPair | null;
   createdAt: string;
   updatedAt: string;
 };

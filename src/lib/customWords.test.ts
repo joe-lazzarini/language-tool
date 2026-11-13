@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  customWordsForPair,
   entrySignature,
   parseStoredWord,
   parseWordStore,
   planSync,
+  prepareWords,
+  readWordStore,
   toEntry,
   withCustomEntries,
+  WORD_STORAGE_KEY,
   type CustomWord,
   type WordStore,
 } from "./customWords";
@@ -18,6 +22,7 @@ function word(id: string, updatedAt: string, en = "cat"): CustomWord {
     pos: "noun",
     createdAt: "2020-01-01T00:00:00.000Z",
     updatedAt,
+    pair: ["en", "pl"],
     forms: {
       en: { text: en, accepted: [{ text: en }] },
       pl: { text: "kot", accepted: [{ text: "kot", context: "masculine" }] },
@@ -88,6 +93,7 @@ describe("storage and deck merge", () => {
     expect(parseStoredWord({ id: "custom-1" })).toBeNull();
     const parsed = parseStoredWord(word("custom-1", "2024-01-01T00:00:00.000Z"));
     expect(parsed?.forms.pl?.accepted[0]).toEqual({ text: "kot", context: "masculine" });
+    expect(parsed?.pair).toEqual(["en", "pl"]);
   });
 
   it("reads the local store shape, including a legacy array", () => {
@@ -138,7 +144,166 @@ describe("storage and deck merge", () => {
     expect(parsed?.forms.pl?.text).toBe("kot");
     expect(parsed?.forms.de?.text).toBe("Katze");
     expect(parsed?.forms.es?.text).toBe("gato");
+    expect(parsed?.pair).toEqual(["en", "pl"]);
     expect((parsed?.forms as Record<string, unknown>).xx).toBeUndefined();
+  });
+});
+
+function legacyCard(id = "custom-1"): CustomWord {
+  return { ...word(id, "2024-01-01T00:00:00.000Z"), pair: null };
+}
+
+describe("language pair migration", () => {
+  it("assigns a legacy card to every pair that has both forms", () => {
+    const legacy = legacyCard();
+    const prepared = prepareWords([legacy]);
+    expect(prepared.migratedIds).toHaveLength(3);
+    expect(prepared.words.map((item) => item.pair && `${item.pair[0]}-${item.pair[1]}`).sort()).toEqual([
+      "de-en",
+      "de-pl",
+      "en-pl",
+    ]);
+
+    const primary = prepared.words.find((item) => item.id === legacy.id);
+    expect(primary?.pair).toEqual(["de", "en"]);
+    expect(primary?.forms.de?.text).toBe("Katze");
+    expect(primary?.forms.en?.text).toBe("cat");
+    expect(primary?.forms.pl).toBeUndefined();
+    expect(primary?.updatedAt).toBe(legacy.updatedAt);
+
+    const enPl = prepared.words.find((item) => item.pair?.[0] === "en" && item.pair[1] === "pl");
+    expect(enPl?.id).toBe("custom-1--en-pl");
+    expect(enPl?.forms.en?.accepted).toEqual([{ text: "cat" }]);
+    expect(enPl?.forms.pl?.accepted).toEqual([{ text: "kot", context: "masculine" }]);
+    expect(enPl?.forms.de).toBeUndefined();
+    expect(enPl?.createdAt).toBe(legacy.createdAt);
+  });
+
+  it("keeps every accepted answer and its context on the pair card", () => {
+    const legacy = legacyCard();
+    legacy.forms.en = {
+      text: "cat",
+      accepted: [{ text: "cat" }, { text: "tomcat", context: "male" }],
+    };
+    legacy.forms.pl = {
+      text: "kot",
+      accepted: [
+        { text: "kot", context: "masculine" },
+        { text: "kocur", context: "tomcat" },
+      ],
+    };
+    const enPl = prepareWords([legacy]).words.find((item) => item.id === "custom-1--en-pl");
+    expect(enPl?.forms.en?.accepted).toEqual([{ text: "cat" }, { text: "tomcat", context: "male" }]);
+    expect(enPl?.forms.pl?.accepted).toEqual([
+      { text: "kot", context: "masculine" },
+      { text: "kocur", context: "tomcat" },
+    ]);
+  });
+
+  it("is idempotent and does not split a card that already has a pair", () => {
+    const once = prepareWords([legacyCard()]);
+    const twice = prepareWords(once.words);
+    expect(twice.migratedIds).toEqual([]);
+    expect(twice.words.map((item) => item.id).sort()).toEqual(once.words.map((item) => item.id).sort());
+
+    const paired = word("custom-kept", "2024-01-01T00:00:00.000Z");
+    const kept = prepareWords([paired]);
+    expect(kept.migratedIds).toEqual([]);
+    expect(kept.words).toHaveLength(1);
+    expect(kept.words[0]?.forms.de?.text).toBe("Katze");
+  });
+
+  it("keeps split ids inside the 80-character Firestore limit", () => {
+    const legacy = legacyCard("c".repeat(80));
+    const ids = prepareWords([legacy]).words.map((item) => item.id);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids.every((id) => id.length > 0 && id.length <= 80)).toBe(true);
+  });
+
+  it("keeps a one-language legacy card instead of dropping it", () => {
+    const solo = legacyCard();
+    solo.forms = { en: { text: "cat", accepted: [{ text: "cat" }] } };
+    const prepared = prepareWords([solo]);
+    expect(prepared.migratedIds).toEqual([]);
+    expect(prepared.words).toEqual([solo]);
+    expect(customWordsForPair(prepared.words, "en", "pl")).toEqual([]);
+  });
+
+  it("treats a malformed pair as legacy and canonicalizes a swapped pair", () => {
+    const legacy = legacyCard();
+    expect(parseStoredWord({ ...legacy, pair: ["nope", "en"] })?.pair).toBeNull();
+    const swapped = parseStoredWord({ ...word("custom-2", "2024-01-01T00:00:00.000Z"), pair: ["pl", "en"] });
+    expect(swapped?.pair).toEqual(["en", "pl"]);
+    expect(prepareWords(swapped ? [swapped] : []).migratedIds).toEqual([]);
+  });
+
+  it("shows a card for either direction of its pair and hides it from other pairs", () => {
+    const words = prepareWords([legacyCard()]).words;
+    const forward = customWordsForPair(words, "en", "pl").map((item) => item.id);
+    const backward = customWordsForPair(words, "pl", "en").map((item) => item.id);
+    expect(forward).toEqual(["custom-1--en-pl"]);
+    expect(backward).toEqual(forward);
+    expect(customWordsForPair(words, "en", "de").map((item) => item.id)).toEqual(["custom-1"]);
+    expect(customWordsForPair(words, "fr", "it")).toEqual([]);
+  });
+
+  it("rewrites a legacy local store and leaves an already-paired store alone", () => {
+    const memory = {
+      raw: JSON.stringify([legacyCard()]),
+      getItem(key: string) {
+        return key === WORD_STORAGE_KEY ? this.raw : null;
+      },
+      setItem(key: string, value: string) {
+        if (key === WORD_STORAGE_KEY) this.raw = value;
+      },
+    };
+    const first = readWordStore(memory);
+    expect(first.words).toHaveLength(3);
+    expect(JSON.parse(memory.raw).words.every((item: CustomWord) => item.pair)).toBe(true);
+    const written = memory.raw;
+    const second = readWordStore(memory);
+    expect(second.words.map((item) => item.id).sort()).toEqual(first.words.map((item) => item.id).sort());
+    expect(memory.raw).toBe(written);
+  });
+
+  it("uploads each migrated pair once, including a card that exists only on the account", () => {
+    const legacy = legacyCard();
+    const fromAccount = planSync(store({ words: [] }), [legacy]);
+    expect(fromAccount.nextWords).toHaveLength(3);
+    expect(fromAccount.upload.map((item) => item.id).sort()).toEqual(
+      fromAccount.nextWords.map((item) => item.id).sort(),
+    );
+    expect(fromAccount.upload.every((item) => item.pair)).toBe(true);
+
+    const retry = planSync(
+      store({ words: fromAccount.nextWords, accountRevision: fromAccount.accountRevision }),
+      [legacy],
+    );
+    expect(retry.upload.map((item) => item.id).sort()).toEqual(fromAccount.upload.map((item) => item.id).sort());
+
+    const settled = planSync(
+      store({ words: fromAccount.nextWords, accountRevision: retry.accountRevision }),
+      fromAccount.upload,
+    );
+    expect(settled.upload).toEqual([]);
+    expect(settled.nextWords).toHaveLength(3);
+  });
+
+  it("does not recreate pair copies for a legacy card this device deleted", () => {
+    const legacy = legacyCard();
+    const plan = planSync(store({ words: [], tombstones: [legacy.id] }), [legacy]);
+    expect(plan.removeRemoteIds).toEqual([legacy.id]);
+    expect(plan.upload).toEqual([]);
+    expect(plan.nextWords).toEqual([]);
+  });
+
+  it("reads a legacy array without dropping it before migration", () => {
+    const saved = legacyCard();
+    const parsed = parseWordStore(JSON.stringify([saved]));
+    expect(parsed.words).toHaveLength(1);
+    expect(parsed.words[0]?.pair).toBeNull();
+    expect(prepareWords(parsed.words).words).toHaveLength(3);
   });
 });
 

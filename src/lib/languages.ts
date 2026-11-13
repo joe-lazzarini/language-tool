@@ -180,6 +180,9 @@ export type LanguageInfo = (typeof LANGUAGES)[number];
 export type LangCode = LanguageInfo["code"];
 export type DiacriticsMode = LanguageInfo["diacritics"];
 
+/** Sorted language codes. English→Polish and Polish→English are the same pair. */
+export type LangPair = readonly [LangCode, LangCode];
+
 const byCode = Object.fromEntries(LANGUAGES.map((item) => [item.code, item])) as Record<
   LangCode,
   LanguageInfo
@@ -218,6 +221,23 @@ export function pivotLanguage(): LangCode | undefined {
 
 export function pairLabel(from: LangCode, to: LangCode): string {
   return `${languageName(from)} → ${languageName(to)}`;
+}
+
+/** Canonical unordered pair, or null when both sides are the same language. */
+export function canonicalPair(a: LangCode, b: LangCode): LangPair | null {
+  if (a === b) return null;
+  return a < b ? [a, b] : [b, a];
+}
+
+export function sameLanguagePair(pair: LangPair | null | undefined, a: LangCode, b: LangCode): boolean {
+  if (!pair) return false;
+  const next = canonicalPair(a, b);
+  return next !== null && pair[0] === next[0] && pair[1] === next[1];
+}
+
+/** Pair label in the order the user picked, e.g. "English–Polish". */
+export function pairNames(from: LangCode, to: LangCode): string {
+  return `${languageName(from)}–${languageName(to)}`;
 }
 
 export function pairHint(from: LangCode, to: LangCode): string {

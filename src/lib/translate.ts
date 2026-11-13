@@ -150,8 +150,16 @@ function applyAnswers(
   return true;
 }
 
+function wantedLanguages(source: LangCode, only?: readonly LangCode[]): LangCode[] {
+  if (!only || only.length === 0) return [...LANG_CODES];
+  const allowed = new Set<LangCode>([source, ...only]);
+  return LANG_CODES.filter((code) => allowed.has(code));
+}
+
 /**
- * Fill the other supported languages for a word typed in one language.
+ * Fill translations for a word typed in one language.
+ * `only` limits the card to a language pair. When it is omitted, every
+ * registry language is filled (older callers).
  * Order: bundled deck, English Wiktionary citation forms, then MyMemory.
  */
 export async function lookupWord(
@@ -159,7 +167,9 @@ export async function lookupWord(
   source: LangCode,
   deck: Entry[],
   fetchImpl: typeof fetch = fetch,
+  only?: readonly LangCode[],
 ): Promise<LookupDraft> {
+  const targets = wantedLanguages(source, only);
   const query = word.trim();
   const notes: string[] = [];
   const forms: Partial<Record<LangCode, Form>> = {};
@@ -170,7 +180,7 @@ export async function lookupWord(
   const deckHit = findDeckEntry(deck.filter((entry) => !entry.custom), source, query);
   if (deckHit) {
     pos = deckHit.pos || pos;
-    for (const code of LANG_CODES) {
+    for (const code of targets) {
       const form = deckHit.forms[code];
       if (form?.text.trim() && form.accepted.some((item) => item.text.trim())) {
         forms[code] = cloneForm(form);
@@ -179,7 +189,7 @@ export async function lookupWord(
     notes.push("Found in the built-in deck.");
   }
 
-  const missing = () => LANG_CODES.filter((code) => !forms[code]);
+  const missing = () => targets.filter((code) => !forms[code]);
   if (missing().length === 0) return { pos, forms, notes };
 
   if (!forms[source]) {
@@ -197,7 +207,7 @@ export async function lookupWord(
         if (lemmaForm) forms[source] = lemmaForm;
         notes.push(`Using the dictionary form "${wiki.lemma}".`);
       }
-      for (const code of LANG_CODES) {
+      for (const code of targets) {
         if (applyAnswers(forms, code, wiki.forms[code])) wikiNote = true;
       }
       if (wikiNote) notes.push("Translations from English Wiktionary.");
@@ -206,7 +216,7 @@ export async function lookupWord(
     notes.push("Wiktionary didn't respond.");
   }
 
-  const gaps = LANG_CODES.filter((code) => code !== source && !forms[code]);
+  const gaps = targets.filter((code) => code !== source && !forms[code]);
   if (gaps.length > 0) {
     const sourceText = forms[source]?.accepted[0]?.text || query;
     const filled = await Promise.all(
@@ -227,8 +237,10 @@ export async function lookupWord(
     }
   }
 
-  if (LANG_CODES.some((code) => !forms[code])) {
-    notes.push("Fill in any blank language, then save.");
+  if (targets.some((code) => !forms[code])) {
+    notes.push(
+      targets.length === 2 ? "Fill in the blank language, then save." : "Fill in any blank language, then save.",
+    );
   }
   return { pos, forms, notes };
 }

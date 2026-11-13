@@ -202,6 +202,20 @@ describe("custom words", () => {
     expect(entriesForPair(withCustom, "de", "pl").some((item) => item.id === "custom-kot")).toBe(true);
   });
 
+  it("stays on the pair whose forms it actually stores", () => {
+    const scoped: Entry = {
+      ...custom,
+      forms: {
+        en: custom.forms.en,
+        pl: custom.forms.pl,
+      },
+    };
+    expect(entriesForPair([scoped], "en", "pl").map((item) => item.id)).toEqual(["custom-kot"]);
+    expect(entriesForPair([scoped], "pl", "en").map((item) => item.id)).toEqual(["custom-kot"]);
+    expect(entriesForPair([scoped], "en", "de")).toEqual([]);
+    expect(wordsForRange(entriesForPair([scoped], "de", "pl"), "mine")).toEqual([]);
+  });
+
   it("stays out of frequency bands, and is included in All and My words", () => {
     const pair = entriesForPair([...sample, custom], "en", "pl");
     expect(wordsForRange(pair, "top100").some((item) => item.custom)).toBe(false);

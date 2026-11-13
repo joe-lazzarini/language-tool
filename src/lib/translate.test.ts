@@ -77,6 +77,20 @@ describe("lookupWord", () => {
     expect(draft.notes[0]).toMatch(/built-in deck/);
   });
 
+  it("fills only the requested language pair", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      throw new Error("network");
+    }) as typeof fetch;
+    const draft = await lookupWord("być", "pl", [withEveryLanguage(deck[0])], fetchImpl, ["pl", "en"]);
+    expect(calls).toEqual([]);
+    expect(draft.forms.pl?.text).toBe("być");
+    expect(draft.forms.en?.accepted.map((item) => item.text)).toEqual(["to be", "be"]);
+    expect(draft.forms.de).toBeUndefined();
+    expect(draft.forms.es).toBeUndefined();
+  });
+
   it("follows a Polish inflection to the Wiktionary lemma and its German citation form", async () => {
     const calls: string[] = [];
     const draft = await lookupWord("koty", "pl", deck, wikiFetch(calls));

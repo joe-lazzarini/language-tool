@@ -11,8 +11,8 @@ One concept per card. Citation form for open-class words: nominative singular no
 - **Any two different languages.** Prompt and answer each have a menu, plus a swap button. The pair is saved in this browser. A new visit starts at English → Polish.
 - Frequency bands (first 100 / 250 / 500 / all, plus later slices) and round sizes of 10, 20, 50, or the whole band. When the pair includes Polish or German, that side’s frequency list decides which cards and which order. Other pairs share one concept list, ordered by the best Polish or German rank those cards have.
 - **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
-- **Add a word** you came across. Type it in one supported language. The app fills in the others, you confirm or edit them, then save. A card needs at least two languages, so words saved before this change still load.
-- **Your words** join study and quiz: they are part of the full deck, and you can also select the **My words** band. They work in every language-pair direction. Edit or delete them from the list.
+- **Add a word** you came across. It is saved for the language pair you currently have selected (English → Polish and Polish → English share one list). Type it in one of those two languages. The app fills in the other, you confirm or edit it, then save.
+- **Your words** join study and quiz for that pair: they are part of the full deck, and you can also select the **My words** band. The count, the list, and My words follow the pair you pick. Edit or delete them from the list.
 - **Sync** is optional. Without Firebase config, words stay in this browser (`localStorage`). With Firebase, Google sign-in stores them in Firestore and the first sign-in merges words already saved on the device.
 
 Each language’s deck is a separate JSON file and is loaded when you need it. Custom words are the only data stored per user.
@@ -42,16 +42,19 @@ The app is a Vite + React static site. GitHub Actions builds `dist/` and publish
 
 ## Add a word
 
-1. Choose the language you saw the word in and type it.
-2. The app looks up the other languages in this order:
+1. The card uses the prompt and answer languages already selected on the home screen.
+2. Choose which of those two you saw the word in, and type it.
+3. The app looks up the other language in this order:
    - the bundled deck (same accepted answers and short contexts as study mode)
    - [English Wiktionary](https://en.wiktionary.org/) (dictionary / citation forms, including gender and a short qualifier when the entry has them). Inflected forms such as *koty* or *cats* follow the lemma.
    - [MyMemory](https://mymemory.translated.net/) if Wiktionary has no hit. Those lines are a translation memory, so check the citation form before saving.
-3. Edit the card text, the accepted answers, and the optional context, then save.
+4. Edit the card text, the accepted answers, and the optional context, then save.
 
-A saved card needs at least two languages. Empty languages are left off the card, so an older word that only has English, Polish, and German still saves and still works for those pairs. Frequency bands stay the built-in lists. **All** includes your words. **My words** is only your words.
+A saved card belongs to that unordered pair. Swapping direction does not create a second list. Frequency bands stay the built-in lists. **All** includes your words for the pair. **My words** is only your words for the pair.
 
-Firestore allows up to 32 language forms on one card (`firestore.rules`). Cards saved with the new languages need that rules file published. A card that still has only two or three forms matches the previous rule as well.
+Cards saved before pairs existed had no `pair` field. On load, each of those cards is copied onto every unordered pair for which it already has both forms. Accepted answers and context are kept. The original id stays on the lexicographically first pair (so `de-en` before `en-pl`); the other copies use a stable id derived from it. Nothing is deleted. A card with fewer than two filled languages cannot be placed, so it stays stored and is left out of every list.
+
+Firestore stores `pair` as a sorted two-code list (`firestore.rules`). A legacy document with no `pair` can still be read. The app writes `pair` the next time it syncs. Cards saved with the new languages need that rules file published.
 
 ## Cloud sync (Firebase Spark)
 
@@ -86,7 +89,7 @@ For local development, put the same six values in `.env` (see `.env.example`). A
 
 ## Data
 
-`public/data/catalog.json` lists concepts (`id`, part of speech, frequency `ranks`, and a `concept` key). `public/data/langs/<code>.json` maps each concept id to that language’s form. The app fetches the catalog once, then the two language files for the pair you picked, and the rest in the background. Add-a-word waits until every language file is loaded so a deck hit can fill them all.
+`public/data/catalog.json` lists concepts (`id`, part of speech, frequency `ranks`, and a `concept` key). `public/data/langs/<code>.json` maps each concept id to that language’s form. The app fetches the catalog once, then the two language files for the pair you picked, and the rest in the background. Add-a-word waits for those two files, and only fills that pair.
 
 Each form has:
 
@@ -162,7 +165,7 @@ No UI or matcher edit. The registry is the list.
    - Hand-check closed-class cards in `scripts/extra_langs.py` (`BY_PL`, `BY_DE`, or `BY_CONCEPT`). A language key set to `[]` means “no translation” and blocks Wiktionary for that card. A missing key falls through to Wiktionary, so a new language does not require editing every existing pack.
    - Run `npm run translations` so the cache includes the new Wiktionary name, then `npm run deck`.
 3. `npm run deck` writes `public/data/langs/<code>.json`. The pickers, letter bar, add-a-word fields, and answer checker follow the registry.
-4. Firestore already allows up to 32 forms on a saved card. Past that, raise `forms.size()` in `firestore.rules`.
+4. Firestore already allows up to 32 forms on a saved card, and `pair` is two short language codes. Past 32 forms, raise `forms.size()` in `firestore.rules`. A new language code does not need a rules edit.
 
 English, Polish, and German citation forms still come from the frequency-list build (`scripts/build-deck.py` and `scripts/families.py`), not from the Wiktionary cache. Do not add those three codes to the cache step expecting it to replace them.
 
@@ -171,7 +174,7 @@ English, Polish, and German citation forms still come from the frequency-list bu
 ```
 public/data/catalog.json      concept ids, ranks, part of speech
 public/data/langs/<code>.json forms for one language, loaded on demand
-firestore.rules               per-user Firestore rules (up to 32 forms)
+firestore.rules               per-user Firestore rules (pair + up to 32 forms)
 firebase.json                 points the Firebase CLI at those rules
 .env.example                  Vite names for the Firebase web config
 scripts/families.py           merge rules, gender paradigms, backfill
