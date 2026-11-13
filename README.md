@@ -36,7 +36,7 @@ npm run preview   # serve the production build
 
 Copy `.env.example` to `.env` and fill in the Firebase web config if you want cloud sync locally. Leave the values empty to stay on this browser only. Restart `npm run dev` after changing `.env`.
 
-The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The Pages workflow reads `VITE_FIREBASE_*` from repository Actions variables, and falls back to secrets of the same name. If they are unset, the deployed site still builds and keeps words on the device.
+The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The build job reads `VITE_FIREBASE_*` from the `github-pages` environment (variables, then secrets of the same name). If they are unset, the deployed site still builds and keeps words on the device.
 
 **Live site:** https://joe-lazzarini.github.io/language-tool/
 
@@ -53,7 +53,7 @@ Saved cards need English, Polish, and German so every direction works. Frequency
 
 ## Cloud sync (Firebase Spark)
 
-The project does not ship with a Firebase project. Create one, then set six repository variables and redeploy. The web config is public in the built JavaScript; `firestore.rules` is what keeps each person’s words private.
+The project does not ship with a Firebase project. Create one, then set six variables on the `github-pages` environment and redeploy. The web config is public in the built JavaScript; `firestore.rules` is what keeps each person’s words private.
 
 1. Open the [Firebase console](https://console.firebase.google.com/) and create a project. Google Analytics is optional.
 2. Project settings (gear) → **General** → **Your apps** → **Add app** → **Web** (`</>`). Register the app (nickname `slowka` is fine). You do not need Firebase Hosting. Copy the `firebaseConfig` values.
@@ -70,7 +70,7 @@ The project does not ship with a Firebase project. Create one, then set six repo
 
    Or open **Firestore → Rules**, paste the contents of `firestore.rules`, and publish. The rules allow a signed-in user to read and write only `users/{their uid}/words/{wordId}`.
 
-7. On GitHub, open this repo → **Settings → Secrets and variables → Actions → Variables** and create these repository variables. Use the values from the web app config in step 2. The same names work as Actions secrets if you prefer; the workflow checks variables first.
+7. On GitHub, open this repo → **Settings → Environments → github-pages**. Under **Environment variables**, add these. Use the values from the web app config in step 2. The same names work as environment secrets if you prefer; the workflow checks variables first. Do not create a separate environment.
 
    | Name | Firebase field |
    | --- | --- |
