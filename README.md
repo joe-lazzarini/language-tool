@@ -78,7 +78,7 @@ The project does not ship with a Firebase project. Create one, then set six vari
    | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
    | `VITE_FIREBASE_APP_ID` | `appId` |
 
-8. **Actions → Deploy GitHub Pages → Run workflow** (or push a commit). The workflow builds the site and runs `firebase deploy --only firestore:rules`. If the service-account secret or the project id is missing, the site still publishes and the rules are left as they are. Sign in with Google on the live site and add a word; it should appear on another browser after you sign in there.
+8. **Actions → Deploy GitHub Pages → Run workflow** (or push a commit). The workflow uploads the site first, then publishes `firestore.rules` with the service account. A rules failure does not stop the Pages deploy. The Firebase Admin SDK key from step 6 can release rules. It cannot pass the Firebase CLI's Service Usage preflight, so the workflow calls the Rules API directly. If that call is denied, open [IAM](https://console.cloud.google.com/iam-admin/iam) for the project, edit the service account named in the log (`client_email` in the JSON), add the role **Firebase Rules Admin**, and re-run the workflow. Sign in with Google on the live site and add a word; it should appear on another browser after you sign in there.
 
 For local development, put the same six values in `.env` (see `.env.example`). An incomplete config is ignored: the app shows that cloud sync is not configured and keeps using this browser.
 
