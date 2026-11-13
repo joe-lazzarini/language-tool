@@ -1,7 +1,16 @@
 import { FormEvent, useRef, useState } from "react";
 import { SpecialKeys } from "./SpecialKeys";
 import { finalizeLanguage } from "../lib/forms";
-import { LANG_CODES, languageByCode, languageName, languageOptionLabel, LANGUAGES, SPECIAL_LETTERS } from "../lib/languages";
+import {
+  canonicalPair,
+  LANG_CODES,
+  sameLanguagePair,
+  languageByCode,
+  languageName,
+  languageOptionLabel,
+  pairNames,
+  SPECIAL_LETTERS,
+} from "../lib/languages";
 import { createCustomWord } from "../lib/customWords";
 import { lookupWord, type LookupDraft } from "../lib/translate";
 import type { AcceptedAnswer, CustomWord, Entry, LangCode } from "../types";
@@ -55,19 +64,29 @@ function fromLookup(draft: LookupDraft): DraftForms {
 
 export function AddWord({
   deck,
+  from,
+  to,
   initial,
   onSave,
   onCancel,
   lookup = lookupWord,
 }: {
   deck: Entry[];
+  from: LangCode;
+  to: LangCode;
   initial?: CustomWord | null;
   onSave: (word: CustomWord) => Promise<void> | void;
   onCancel: () => void;
   lookup?: typeof lookupWord;
 }) {
   const editing = Boolean(initial);
-  const [source, setSource] = useState<LangCode>("en");
+  const pair = initial?.pair ?? canonicalPair(from, to);
+  const fieldOrder: LangCode[] = !pair
+    ? [from]
+    : sameLanguagePair(pair, from, to) && from !== to
+      ? [from, to]
+      : [pair[0], pair[1]];
+  const [source, setSource] = useState<LangCode>(fieldOrder.includes(from) ? from : fieldOrder[0]);
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState(initial?.pos || "noun");
   const [forms, setForms] = useState<DraftForms>(() => (initial ? fromWord(initial) : emptyForms()));
@@ -104,7 +123,7 @@ export function AddWord({
     setLooking(true);
     setError(null);
     try {
-      const draft = await lookup(trimmed, source, deck);
+      const draft = await lookup(trimmed, source, deck, fetch, fieldOrder);
       setForms(fromLookup(draft));
       setPos(draft.pos || "word");
       setNotes(draft.notes);
@@ -153,13 +172,17 @@ export function AddWord({
 
   async function save() {
     setError(null);
+    if (!pair) {
+      setError("Choose two different languages before saving.");
+      return;
+    }
     const nextForms: CustomWord["forms"] = {};
-    for (const code of LANG_CODES) {
+    for (const code of pair) {
       const form = finalizeLanguage(forms[code].text, forms[code].accepted);
       if (form) nextForms[code] = form;
     }
-    if (Object.keys(nextForms).length < 2) {
-      setError("Add at least two languages before saving.");
+    if (!nextForms[pair[0]] || !nextForms[pair[1]]) {
+      setError(`Add both ${languageName(pair[0])} and ${languageName(pair[1])} before saving.`);
       return;
     }
     setSaving(true);
@@ -168,6 +191,7 @@ export function AddWord({
         id: initial?.id,
         pos,
         forms: nextForms,
+        pair,
         createdAt: initial?.createdAt,
       });
       await onSave(word);
@@ -184,8 +208,9 @@ export function AddWord({
         <p className="eyebrow">{editing ? "Edit card" : "New card"}</p>
         <h1>{editing ? "Edit word" : "Add a word"}</h1>
         <p className="lede">
-          Type a word in one language. The others are filled from the built-in deck, then Wiktionary,
-          then MyMemory. Check the dictionary forms, then save. A card needs at least two languages.
+          Saved for {pairNames(from, to)} only. The other direction uses the same words. Type a word in
+          one of these languages. The other is filled from the built-in deck, then Wiktionary, then
+          MyMemory. Check it, then save.
         </p>
       </header>
 
@@ -201,12 +226,12 @@ export function AddWord({
               value={source}
               onChange={(event) => {
                 const next = event.target.value;
-                if (LANG_CODES.some((code) => code === next)) setSource(next as LangCode);
+                if (fieldOrder.some((code) => code === next)) setSource(next as LangCode);
               }}
             >
-              {LANGUAGES.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {languageOptionLabel(lang)}
+              {fieldOrder.map((code) => (
+                <option key={code} value={code}>
+                  {languageOptionLabel(languageByCode(code))}
                 </option>
               ))}
             </select>
@@ -264,7 +289,7 @@ export function AddWord({
               ))}
             </select>
           </div>
-          {LANG_CODES.map((code) => (
+          {fieldOrder.map((code) => (
             <fieldset key={code} className="lang-block">
               <legend>{languageName(code)}</legend>
               <label className="field">

@@ -16,8 +16,24 @@ service cloud.firestore {
 
     // forms.size() allows every language in the registry, with room to add more
     // (up to 32) without a rules change. Older cards with two or three forms still match.
+    // pair is the unordered language pair, stored sorted so en–pl and pl–en match.
+    // Codes stay a short string pair so a new registry language does not need a
+    // rules edit. Reads do not use isWord, so a legacy document with no pair
+    // still loads; this app rewrites it with pair on the next sync.
+    function isPair(pair) {
+      return pair is list
+        && pair.size() == 2
+        && pair[0] is string
+        && pair[1] is string
+        && pair[0].size() > 0
+        && pair[0].size() <= 12
+        && pair[1].size() > 0
+        && pair[1].size() <= 12
+        && pair[0] < pair[1];
+    }
+
     function isWord(data) {
-      return data.keys().hasAll(['id', 'pos', 'forms', 'createdAt', 'updatedAt'])
+      return data.keys().hasAll(['id', 'pos', 'forms', 'pair', 'createdAt', 'updatedAt'])
         && data.id is string
         && data.id.size() > 0
         && data.id.size() <= 80
@@ -27,6 +43,7 @@ service cloud.firestore {
         && data.forms is map
         && data.forms.size() > 0
         && data.forms.size() <= 32
+        && isPair(data.pair)
         && data.createdAt is string
         && data.updatedAt is string
         && data.createdAt.size() < 40

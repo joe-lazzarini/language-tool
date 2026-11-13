@@ -4,7 +4,7 @@ import { AddWord } from "./components/AddWord";
 import { AnswerReveal } from "./components/AnswerReveal";
 import { SpecialKeys } from "./components/SpecialKeys";
 import { WordList } from "./components/WordList";
-import { withCustomEntries, toEntry, type CustomWord } from "./lib/customWords";
+import { customWordsForPair, withCustomEntries, toEntry, type CustomWord } from "./lib/customWords";
 import {
   acceptedFor,
   buildSession,
@@ -30,6 +30,7 @@ import {
   otherLanguage,
   pairHint,
   pairLabel,
+  pairNames,
   SPECIAL_LETTERS,
 } from "./lib/languages";
 import { isCorrectAnswer } from "./lib/match";
@@ -169,11 +170,12 @@ function Home({
           >
             <span className="mine-card-title">
               My words
+              <span className="mine-pair"> · {pairNames(settings.from, settings.to)}</span>
               {settings.range === "mine" ? <span className="mine-selected">Selected</span> : null}
             </span>
             <span className="mine-card-hint">
               {customCount === 0
-                ? "No saved words yet"
+                ? "No saved words for this pair yet"
                 : `${customCount} saved ${customCount === 1 ? "word" : "words"}`}
             </span>
             <span className="mine-count" aria-hidden="true">
@@ -267,7 +269,7 @@ function Home({
                 : `${pool} saved ${pool === 1 ? "word" : "words"} for ${pairLabel(settings.from, settings.to)}.`
               : `${pairCount} usable ${pairLabel(settings.from, settings.to)} cards; ${pool} in this band, shuffled each round.`}
             {customCount > 0 && settings.range !== "mine" && settings.range !== "all"
-              ? " Your words are in All and in My words."
+              ? " Your words for this pair are in All and in My words."
               : ""}
           </p>
         </div>
@@ -546,8 +548,11 @@ export function App() {
 
   const entries = useMemo(() => (catalog ? assembleEntries(catalog, packs) : []), [catalog, packs]);
   const pairReady = Boolean(catalog && packs[settings.from] && packs[settings.to]);
-  const dictionariesReady = LANG_CODES.every((code) => packs[code]);
-  const customEntries = useMemo(() => wordsApi.words.map(toEntry), [wordsApi.words]);
+  const pairWords = useMemo(
+    () => customWordsForPair(wordsApi.words, settings.from, settings.to),
+    [wordsApi.words, settings.from, settings.to],
+  );
+  const customEntries = useMemo(() => pairWords.map(toEntry), [pairWords]);
   const studyEntries = useMemo(
     () => (catalog ? withCustomEntries(entries, customEntries) : customEntries),
     [catalog, entries, customEntries],
@@ -586,7 +591,7 @@ export function App() {
             setSettings={setSettings}
             pairCount={pairEntries.length}
             pool={pool}
-            customCount={wordsApi.words.length}
+            customCount={pairWords.length}
             onStart={start}
             onAdd={() => {
               setEditing(null);
@@ -595,12 +600,14 @@ export function App() {
             onList={() => setScreen("list")}
           />
         )}
-        {!session && screen === "add" && !dictionariesReady && !error && (
+        {!session && screen === "add" && !pairReady && !error && (
           <p className="lede">Loading dictionaries…</p>
         )}
-        {!session && screen === "add" && dictionariesReady && (
+        {!session && screen === "add" && pairReady && (
           <AddWord
             deck={entries}
+            from={settings.from}
+            to={settings.to}
             initial={editing}
             onCancel={() => {
               setEditing(null);
@@ -615,7 +622,9 @@ export function App() {
         )}
         {!session && screen === "list" && (
           <WordList
-            words={wordsApi.words}
+            words={pairWords}
+            from={settings.from}
+            to={settings.to}
             onAdd={() => {
               setEditing(null);
               setScreen("add");
