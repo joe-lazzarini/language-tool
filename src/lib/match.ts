@@ -64,9 +64,13 @@ function addTarget(targets: Set<string>, raw: string, lang?: LangCode): void {
 function addZhContextTargets(targets: Set<string>, item: AnswerLike): void {
   if (typeof item === "string") return;
   const context = item.context?.trim();
-  if (!context || !looksLikePinyin(context)) return;
-  addTarget(targets, context, "zh");
-  const folded = foldPinyin(context);
+  // "pinyin" marks a romanization accepted answer; it is not itself a reading.
+  if (!context || context === "pinyin") return;
+  // Hand / Wiktionary rows use "nǐ · informal" — only the reading before · counts.
+  const reading = context.split(/\s*·\s*/u)[0]?.trim() ?? "";
+  if (!reading || !looksLikePinyin(reading)) return;
+  addTarget(targets, reading, "zh");
+  const folded = foldPinyin(reading);
   if (folded) targets.add(folded);
 }
 

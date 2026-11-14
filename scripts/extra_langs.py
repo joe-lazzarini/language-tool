@@ -863,11 +863,23 @@ def romaji_variants(text: str) -> list[str]:
 
 
 def _clean(text: str, code: str) -> str:
+    # Wiktionary link markup: [[lemma]] or [[lemma|display]]
+    text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)
+    text = text.replace("[[", "").replace("]]", "")
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"^[.…]+", "", text).strip()
     if code == "ru":
         text = strip_ru_stress(text)
     return text
+
+
+def _usable_pinyin(text: str) -> bool:
+    """Drop slot-style readings (在…旁 → zāi … pang) that are not typeable answers."""
+    if not text:
+        return False
+    if "…" in text or "..." in text:
+        return False
+    return bool(re.search(r"[A-Za-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüÜ]", text))
 
 
 def to_form(pairs: list | None, code: str) -> dict | None:
@@ -880,6 +892,13 @@ def to_form(pairs: list | None, code: str) -> dict | None:
         text = _clean(text, code)
         if not text or len(text) > 48:
             return
+        if context == PINYIN and not _usable_pinyin(text):
+            return
+        # Sense glosses may be "nǐ · informal"; drop unusable slot-style readings.
+        if context and context != PINYIN:
+            reading = context.split("·", 1)[0].strip() if "·" in context else context
+            if reading and not _usable_pinyin(reading):
+                context = None
         key = text.casefold()
         if key in seen:
             return

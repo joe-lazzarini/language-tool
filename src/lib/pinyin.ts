@@ -75,7 +75,8 @@ export function foldPinyin(value: string): string {
   let next = value.normalize("NFC").trim().toLocaleLowerCase("zh-CN");
   if (!next) return "";
   if (!looksLikePinyin(next)) {
-    return next.replace(/\s+/g, "");
+    // Wiktionary pattern slots use …… / ... between characters (在……期间).
+    return next.replace(/\s+/g, "").replace(/(?:\.{3,}|…+)/gu, "");
   }
   let out = "";
   for (const ch of next) {

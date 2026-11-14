@@ -201,6 +201,8 @@ def parse_block(block: str, names: dict[str, str], wanted: set[str]) -> dict[str
                 cursor = end
                 continue
             text = found.group(2).replace("_", " ").strip()
+            text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", text)
+            text = text.replace("[[", "").replace("]]", "")
             if not text or len(text) > 40 or text.count(" ") > 3 or "{" in text:
                 cursor = end
                 continue
@@ -208,6 +210,9 @@ def parse_block(block: str, names: dict[str, str], wanted: set[str]) -> dict[str
                 text = to_simplified(text)
             row = {"text": text}
             romaji = latin_romaji(tr) if tr else None
+            # Slot-style tr= values (zāi … pang) are not usable typed answers.
+            if romaji and ("…" in romaji or "..." in romaji):
+                romaji = None
             if code == "zh" and romaji:
                 row["context"] = f"{romaji} · {gender}" if gender else romaji
             elif gender:

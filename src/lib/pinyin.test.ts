@@ -17,9 +17,11 @@ describe("foldPinyin", () => {
     expect(foldPinyin("lü4")).toBe(foldPinyin("lv"));
   });
 
-  it("leaves Hanzi intact aside from spaces", () => {
+  it("leaves Hanzi intact aside from spaces and slot ellipses", () => {
     expect(foldPinyin("你好")).toBe("你好");
     expect(foldPinyin("你 好")).toBe("你好");
+    expect(foldPinyin("在……期间")).toBe("在期间");
+    expect(foldPinyin("除了...以外")).toBe("除了以外");
   });
 });
 
