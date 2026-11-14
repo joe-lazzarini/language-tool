@@ -7,7 +7,6 @@ import { WordList } from "./components/WordList";
 import { customWordsForPair, withCustomEntries, toEntry, type CustomWord } from "./lib/customWords";
 import {
   acceptedFor,
-  buildSession,
   entriesForPair,
   expectedFor,
   formText,
@@ -33,9 +32,14 @@ import {
   pairNames,
   SPECIAL_LETTERS,
 } from "./lib/languages";
+import { focusHint, selectCards, weakCount } from "./accuracy/stats";
+import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isCorrectAnswer } from "./lib/match";
-import type { CardResult, Catalog, Entry, LangCode, LangPack, Mode, Settings } from "./types";
+import { SentenceCard } from "./sentence/SentenceCard";
+import { SentenceQuiz } from "./sentence/SentenceQuiz";
+import { useSentenceStatus } from "./sentence/useSentenceStatus";
+import type { CardResult, Catalog, Entry, Focus, LangCode, LangPack, Mode, Settings } from "./types";
 
 const STORAGE_KEY = "slowka-settings-v2";
 const LEGACY_STORAGE_KEY = "slowka-settings-v1";
@@ -46,6 +50,7 @@ const defaultSettings: Settings = {
   to: "pl",
   range: "top100",
   size: 10,
+  focus: "all",
 };
 
 function migrateLegacy(raw: string): Partial<Settings> | null {
@@ -69,12 +74,14 @@ function loadSettings(): Settings {
     const from = parsed.from && isLangCode(parsed.from) ? parsed.from : defaultSettings.from;
     const to = parsed.to && isLangCode(parsed.to) ? parsed.to : defaultSettings.to;
     const range = parsed.range && RANGES.some((item) => item.id === parsed.range) ? parsed.range : defaultSettings.range;
+    const focus: Focus = parsed.focus === "weak" ? "weak" : "all";
     return {
       ...defaultSettings,
       ...parsed,
       from,
       to: to === from ? otherLanguage(from) : to,
       range,
+      focus,
     };
   } catch {
     return defaultSettings;
@@ -121,18 +128,30 @@ function Home({
   pairCount,
   pool,
   customCount,
+  weakInBand,
+  sentence,
   onStart,
   onAdd,
   onList,
+  onSentence,
 }: {
   settings: Settings;
   setSettings: (next: Settings) => void;
   pairCount: number;
   pool: number;
   customCount: number;
+  weakInBand: number;
+  sentence: {
+    loading: boolean;
+    error: string | null;
+    knownPrompt: number;
+    knownAnswer: number;
+    ready: number;
+  };
   onStart: () => void;
   onAdd: () => void;
   onList: () => void;
+  onSentence: () => void;
 }) {
   const sameLanguage = settings.from === settings.to;
 
@@ -193,6 +212,17 @@ function Home({
           </div>
         </div>
 
+        <SentenceCard
+          from={settings.from}
+          to={settings.to}
+          loading={sentence.loading}
+          error={sentence.error}
+          knownPrompt={sentence.knownPrompt}
+          knownAnswer={sentence.knownAnswer}
+          ready={sentence.ready}
+          onOpen={onSentence}
+        />
+
         <div className="field">
           <span className="label">Mode</span>
           <div className="segment">
@@ -217,6 +247,28 @@ function Home({
               ? "Flip or type to check. No score — just practice."
               : "Type every answer. Your score is counted at the end."}
           </p>
+        </div>
+
+        <div className="field">
+          <span className="label">Focus</span>
+          <div className="segment">
+            {(
+              [
+                ["all", "All"],
+                ["weak", "Weak words"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={settings.focus === value ? "on" : ""}
+                onClick={() => setSettings({ ...settings, focus: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{focusHint(settings.focus, weakInBand)}</p>
         </div>
 
         <div className="pair-grid">
@@ -289,12 +341,14 @@ export function Session({
   from,
   to,
   onExit,
+  onGraded,
 }: {
   words: Entry[];
   mode: Mode;
   from: LangCode;
   to: LangCode;
   onExit: () => void;
+  onGraded?: (wordId: string, correct: boolean) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [input, setInput] = useState("");
@@ -343,6 +397,7 @@ export function Session({
     setCorrect(ok);
     setRevealed(true);
     setResults((prev) => [...prev, { word, correct: ok, given: given.trim() }]);
+    onGraded?.(word.id, ok);
   }
 
   function reveal() {
@@ -351,6 +406,7 @@ export function Session({
     setRevealed(true);
     if (mode === "quiz") {
       setResults((prev) => [...prev, { word, correct: false, given: input.trim() }]);
+      onGraded?.(word.id, false);
     }
   }
 
@@ -536,7 +592,11 @@ export function Session({
   );
 }
 
-type Screen = "home" | "add" | "list";
+type Screen = "home" | "add" | "list" | "sentence";
+
+function sentenceHash(): boolean {
+  return typeof location !== "undefined" && location.hash === "#sentence";
+}
 
 export function App() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -544,9 +604,23 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettingsState] = useState<Settings>(loadSettings);
   const [session, setSession] = useState<Entry[] | null>(null);
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>(sentenceHash() ? "sentence" : "home");
   const [editing, setEditing] = useState<CustomWord | null>(null);
   const wordsApi = useCustomWords();
+  const accuracy = useAccuracy(wordsApi.account?.uid ?? null);
+  const sentenceStatus = useSentenceStatus(settings.from, settings.to, accuracy.revision, accuracy.read);
+
+  useEffect(() => {
+    function onHash() {
+      if (sentenceHash()) {
+        setScreen("sentence");
+        return;
+      }
+      setScreen((current) => (current === "sentence" ? "home" : current));
+    }
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -608,14 +682,25 @@ export function App() {
   const pool = wordsForRange(pairEntries, settings.range).length;
 
   function start() {
-    const pool = wordsForRange(pairEntries, settings.range);
-    setSession(buildSession(pool, settings.size));
+    const band = wordsForRange(pairEntries, settings.range);
+    setSession(selectCards(band, accuracy.read(settings.from, settings.to), settings.focus, settings.size));
+  }
+
+  function openSentence() {
+    if (!sentenceHash()) location.hash = "sentence";
+    setScreen("sentence");
+  }
+
+  function closeSentence() {
+    if (sentenceHash()) history.pushState(null, "", `${location.pathname}${location.search}`);
+    setScreen("home");
   }
 
   return (
     <div className="page">
       <div className="shell">
         {error && <p className="banner">{error}</p>}
+        {accuracy.error && <p className="banner">{accuracy.error}</p>}
         {!session && (
           <AccountBar
             configured={wordsApi.configured}
@@ -628,7 +713,7 @@ export function App() {
             onSignOut={() => void wordsApi.signOut()}
           />
         )}
-        {!pairReady && !error && screen !== "list" && <p className="lede">Loading the decks…</p>}
+        {!pairReady && !error && (screen === "home" || screen === "add") && <p className="lede">Loading the decks…</p>}
         {pairReady && !session && screen === "home" && (
           <Home
             settings={settings}
@@ -636,7 +721,10 @@ export function App() {
             pairCount={pairEntries.length}
             pool={pool}
             customCount={pairWords.length}
+            weakInBand={weakCount(wordsForRange(pairEntries, settings.range), accuracy.read(settings.from, settings.to))}
+            sentence={sentenceStatus}
             onStart={start}
+            onSentence={openSentence}
             onAdd={() => {
               setEditing(null);
               setScreen("add");
@@ -681,6 +769,16 @@ export function App() {
             onBack={() => setScreen("home")}
           />
         )}
+        {!session && screen === "sentence" && (
+          <SentenceQuiz
+            from={settings.from}
+            to={settings.to}
+            revision={accuracy.revision}
+            read={accuracy.read}
+            onToggleManual={accuracy.toggleManual}
+            onExit={closeSentence}
+          />
+        )}
         {session && (
           <Session
             words={session}
@@ -688,6 +786,7 @@ export function App() {
             from={settings.from}
             to={settings.to}
             onExit={() => setSession(null)}
+            onGraded={(wordId, correct) => accuracy.record(settings.from, settings.to, wordId, correct)}
           />
         )}
         <footer className="foot">

@@ -1,6 +1,7 @@
 rules_version = '2';
 
-// Each signed-in user may read and write only documents under users/{their uid}/words.
+// Each signed-in user may read and write only their words and their
+// per-direction accuracy under users/{their uid}/.
 // The GitHub Pages workflow releases this file through the Firebase Rules API
 // when the github-pages environment has FIREBASE_SERVICE_ACCOUNT and
 // VITE_FIREBASE_PROJECT_ID. A rules failure does not block the site deploy.
@@ -55,6 +56,28 @@ service cloud.firestore {
       allow create, update: if isOwner(userId)
         && wordId == request.resource.data.id
         && isWord(request.resource.data);
+      allow delete: if isOwner(userId);
+    }
+
+    // One document per ordered direction (en_pl = English prompt, Polish answer).
+    // words is a map of word id → [correct, attempts, lastSeenMs, windowBits, windowLen, manual].
+    // The byte cap and the 1500-key cap are what keep a document small; rules cannot
+    // walk every map value.
+    function isAccuracy(dirId, data) {
+      return dirId.matches('^[a-z]{2}_[a-z]{2}$')
+        && dirId[0:2] != dirId[3:5]
+        && data.keys().hasOnly(['words', 'updatedAt'])
+        && data.words is map
+        && data.words.size() <= 1500
+        && data.updatedAt is string
+        && data.updatedAt.size() > 0
+        && data.updatedAt.size() < 40
+        && request.resource.size() < 200000;
+    }
+
+    match /users/{userId}/accuracy/{dirId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isAccuracy(dirId, request.resource.data);
       allow delete: if isOwner(userId);
     }
 

@@ -1,0 +1,112 @@
+{
+  "frames": {
+    "vi": "{subject} {verb}.",
+    "vt": "{subject} {verb} {object}.",
+    "adj": "{subject} {adj}."
+  },
+  "nouns": {
+    "house": {
+      "npNom": "дом",
+      "npAcc": "дом",
+      "gender": "m"
+    },
+    "dog": {
+      "npNom": "собака",
+      "npAcc": "собаку",
+      "gender": "f"
+    },
+    "child": {
+      "npNom": "ребёнок",
+      "npAcc": "ребёнка",
+      "gender": "m"
+    },
+    "book": {
+      "npNom": "книга",
+      "npAcc": "книгу",
+      "gender": "f"
+    },
+    "water": {
+      "npNom": "вода",
+      "npAcc": "воду",
+      "gender": "f"
+    },
+    "school": {
+      "npNom": "школа",
+      "npAcc": "школу",
+      "gender": "f"
+    },
+    "car": {
+      "npNom": "машина",
+      "npAcc": "машину",
+      "gender": "f"
+    },
+    "city": {
+      "npNom": "город",
+      "npAcc": "город",
+      "gender": "m"
+    },
+    "cat": {
+      "npNom": "кошка",
+      "npAcc": "кошку",
+      "gender": "f"
+    },
+    "bread": {
+      "npNom": "хлеб",
+      "npAcc": "хлеб",
+      "gender": "m"
+    },
+    "friend": {
+      "npNom": "друг",
+      "npAcc": "друга",
+      "gender": "m"
+    }
+  },
+  "verbs": {
+    "sleep": {
+      "form": "спит"
+    },
+    "work": {
+      "form": "работает"
+    },
+    "wait": {
+      "form": "ждёт"
+    },
+    "read": {
+      "form": "читает"
+    },
+    "see": {
+      "form": "видит"
+    },
+    "eat": {
+      "form": "ест"
+    },
+    "drink": {
+      "form": "пьёт"
+    },
+    "write": {
+      "form": "пишет"
+    }
+  },
+  "adjectives": {
+    "big": {
+      "m": "большой",
+      "f": "большая",
+      "n": "большое"
+    },
+    "small": {
+      "m": "маленький",
+      "f": "маленькая",
+      "n": "маленькое"
+    },
+    "new": {
+      "m": "новый",
+      "f": "новая",
+      "n": "новое"
+    },
+    "good": {
+      "m": "хороший",
+      "f": "хорошая",
+      "n": "хорошее"
+    }
+  }
+}

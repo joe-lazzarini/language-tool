@@ -4,6 +4,8 @@ export type { LangCode, LangPair };
 
 export type Mode = "study" | "quiz";
 
+export type Focus = "all" | "weak";
+
 export type AcceptedAnswer = {
   text: string;
   /** Short gender / sense / register label shown on reveal. */
@@ -99,6 +101,8 @@ export type Settings = {
   to: LangCode;
   range: RangeId;
   size: SessionSize;
+  /** All uses the whole band. Weak prefers cards with low accuracy in this direction. */
+  focus: Focus;
 };
 
 export type CardResult = {
