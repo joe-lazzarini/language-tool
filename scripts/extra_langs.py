@@ -864,6 +864,7 @@ def romaji_variants(text: str) -> list[str]:
 
 def _clean(text: str, code: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^[.…]+", "", text).strip()
     if code == "ru":
         text = strip_ru_stress(text)
     return text

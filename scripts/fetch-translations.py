@@ -130,6 +130,8 @@ def latin_romaji(tr: str) -> str | None:
         part = part.strip()
         if not part:
             continue
+        # Wiktionary sometimes prefixes particle slots with an ellipsis.
+        part = re.sub(r"^[.…\s]+", "", part).strip()
         if re.search(r"[A-Za-z]", part) and not re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", part):
             return part
     return None
