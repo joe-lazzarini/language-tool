@@ -8,14 +8,16 @@ One concept per card. Citation form for open-class words: nominative singular no
 
 - **Quiz mode** (default): type every answer; skip counts as incorrect; score and missed-word review at the end.
 - **Study mode**: type to check, or reveal the answer without scoring.
+- **Focus:** All, or Weak words. Weak words are the ones you miss in this direction (lifetime or recent accuracy under 60%). A short round uses those first and fills with new cards when there are not enough. Choosing every card in the band keeps only the weak ones. With no misses recorded yet, the round still uses the whole band.
+- **Sentence quiz:** a separate card and screen (`#sentence`). Once you know enough words on both sides of the pair, it builds short sentences from those words and asks you to translate them. Two correct answers in a row in this direction count as knowing a word. You can also mark a sentence word by hand. Articles and other grammar stay in the template, so the sentences stay grammatical offline.
 - **Any two different languages.** Prompt and answer each have a menu, plus a swap button. The pair is saved in this browser. A new visit starts at English → Polish.
 - Frequency bands (first 100 / 250 / 500 / all, plus later slices) and round sizes of 10, 20, 50, or the whole band. When the pair includes Polish or German, that side’s frequency list decides which cards and which order. Other pairs share one concept list, ordered by the best Polish or German rank those cards have.
 - **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
 - **Add a word** you came across. It is saved for the language pair you currently have selected (English → Polish and Polish → English share one list). Type it in one of those two languages. The app fills in the other, you confirm or edit it, then save.
 - **Your words** join study and quiz for that pair: they are part of the full deck, and you can also select the **My words** band. The count, the list, and My words follow the pair you pick. Edit or delete them from the list.
-- **Sync** is optional. Without Firebase config, words stay in this browser (`localStorage`). With Firebase, Google sign-in stores them in Firestore and the first sign-in merges words already saved on the device.
+- **Sync** is optional. Without Firebase config, words and practice stay in this browser (`localStorage`). With Firebase, Google sign-in stores words and practice in Firestore. The first sign-in merges what is already saved on the device. Practice writes are debounced, one document per direction, not one write per answer.
 
-Each language’s deck is a separate JSON file and is loaded when you need it. Custom words are the only data stored per user.
+Each language’s deck is a separate JSON file and is loaded when you need it. Custom words and practice history are the data stored per user. Practice history is one compact record per direction (`en_pl` is an English prompt with a Polish answer): correct and attempt counts, the last eight results, and an optional “I know this” mark. “Known” is derived from that record. It is not stored as a second list.
 
 ## Run locally
 
@@ -29,7 +31,7 @@ npm run dev
 Then open the URL Vite prints (usually `http://localhost:5173/language-tool/`). The `base` is `/language-tool/` so the same asset paths work on GitHub Pages.
 
 ```bash
-npm test          # unit tests for answer matching, families, reveal UI, lookup, and sync
+npm test          # unit tests for answer matching, accuracy, sentence templates, lookup, and sync
 npm run build     # production build to dist/
 npm run preview   # serve the production build
 ```
@@ -39,6 +41,14 @@ Copy `.env.example` to `.env` and fill in the Firebase web config if you want cl
 The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The build job reads `VITE_FIREBASE_*` from the `github-pages` environment (variables, then secrets of the same name). If they are unset, the deployed site still builds and keeps words on the device.
 
 **Live site:** https://joe-lazzarini.github.io/language-tool/
+
+## Sentence quiz
+
+Open **Sentence quiz** on the home screen. The card shows how many of the sentence words you know in each language of the pair, and how many sentences that is enough to build. Four sentences unlock a round of up to eight.
+
+A word counts as known in a language when, in the direction that asks you to produce that language, the last two graded answers were correct, or you marked it on the sentence screen. A later miss drops the “two in a row” condition. A mark stays until you clear it. Quiz and study checks are graded attempts. A quiz skip counts as a miss. A study reveal does not. Sentence-quiz answers do not change word accuracy.
+
+The sentences are filled from `public/data/sentences/`. `index.json` is the shared lexicon (part of speech, which nouns can be subjects or objects, and the deck ids that count as knowing that word). `public/data/sentences/<code>.json` is loaded the first time that language is needed. Each file stores the frame and the exact form the frame needs, including gender, case, and the article, so Polish, German, Russian, and the others stay grammatical without a conjugation engine. Japanese also accepts the plain verb and the adjective without です. Typed answers ignore case, extra spaces, and a final period. They do not ignore a missing article.
 
 ## Add a word
 
@@ -58,7 +68,7 @@ Firestore stores `pair` as a sorted two-code list (`firestore.rules`). A legacy 
 
 ## Cloud sync (Firebase Spark)
 
-The project does not ship with a Firebase project. Create one, then set six variables on the `github-pages` environment and redeploy. The web config is public in the built JavaScript; `firestore.rules` is what keeps each person’s words private.
+The project does not ship with a Firebase project. Create one, then set six variables on the `github-pages` environment and redeploy. The web config is public in the built JavaScript; `firestore.rules` is what keeps each person’s words and practice private. Practice history lives at `users/{uid}/accuracy/{from}_{to}` (at most 1500 words and 200 KB per direction).
 
 1. Open the [Firebase console](https://console.firebase.google.com/) and create a project. Google Analytics is optional.
 2. Project settings (gear) → **General** → **Your apps** → **Add app** → **Web** (`</>`). Register the app (nickname `slowka` is fine). You do not need Firebase Hosting. Copy the `firebaseConfig` values.
@@ -174,7 +184,8 @@ English, Polish, and German citation forms still come from the frequency-list bu
 ```
 public/data/catalog.json      concept ids, ranks, part of speech
 public/data/langs/<code>.json forms for one language, loaded on demand
-firestore.rules               per-user Firestore rules (pair + up to 32 forms)
+public/data/sentences/        sentence lexicon and one template file per language
+firestore.rules               per-user Firestore rules (words, and accuracy up to 1500 ids)
 firebase.json                 points the Firebase CLI at those rules
 .env.example                  Vite names for the Firebase web config
 scripts/families.py           merge rules, gender paradigms, backfill
@@ -197,4 +208,6 @@ src/lib/loadDeck.ts           lazy-load catalog + one file per language
 src/lib/translate.ts          deck, then Wiktionary, then MyMemory
 src/lib/customWords.ts        local store and account merge
 src/lib/match.ts              answer checking
+src/accuracy/                 per-direction accuracy, known derivation, weak-card selection
+src/sentence/                 offline sentence quiz (templates, checker, screen)
 ```

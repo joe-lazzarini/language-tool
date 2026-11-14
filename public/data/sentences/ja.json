@@ -1,0 +1,137 @@
+{
+  "frames": {
+    "vi": "{subject}は{verb}。",
+    "vt": "{subject}は{object}を{verb}。",
+    "adj": "{subject}は{adj}です。",
+    "adjPlain": "{subject}は{adj}。"
+  },
+  "nouns": {
+    "house": {
+      "npNom": "家",
+      "npAcc": "家",
+      "gender": "n"
+    },
+    "dog": {
+      "npNom": "犬",
+      "npAcc": "犬",
+      "gender": "m"
+    },
+    "child": {
+      "npNom": "子供",
+      "npAcc": "子供",
+      "gender": "n"
+    },
+    "book": {
+      "npNom": "本",
+      "npAcc": "本",
+      "gender": "n"
+    },
+    "water": {
+      "npNom": "水",
+      "npAcc": "水",
+      "gender": "n"
+    },
+    "school": {
+      "npNom": "学校",
+      "npAcc": "学校",
+      "gender": "n"
+    },
+    "car": {
+      "npNom": "車",
+      "npAcc": "車",
+      "gender": "n"
+    },
+    "city": {
+      "npNom": "都市",
+      "npAcc": "都市",
+      "gender": "n"
+    },
+    "cat": {
+      "npNom": "猫",
+      "npAcc": "猫",
+      "gender": "m"
+    },
+    "bread": {
+      "npNom": "パン",
+      "npAcc": "パン",
+      "gender": "n"
+    },
+    "friend": {
+      "npNom": "友達",
+      "npAcc": "友達",
+      "gender": "m"
+    }
+  },
+  "verbs": {
+    "sleep": {
+      "form": "寝ます",
+      "alts": [
+        "寝る"
+      ]
+    },
+    "work": {
+      "form": "働きます",
+      "alts": [
+        "働く"
+      ]
+    },
+    "wait": {
+      "form": "待ちます",
+      "alts": [
+        "待つ"
+      ]
+    },
+    "read": {
+      "form": "読みます",
+      "alts": [
+        "読む"
+      ]
+    },
+    "see": {
+      "form": "見ます",
+      "alts": [
+        "見る"
+      ]
+    },
+    "eat": {
+      "form": "食べます",
+      "alts": [
+        "食べる"
+      ]
+    },
+    "drink": {
+      "form": "飲みます",
+      "alts": [
+        "飲む"
+      ]
+    },
+    "write": {
+      "form": "書きます",
+      "alts": [
+        "書く"
+      ]
+    }
+  },
+  "adjectives": {
+    "big": {
+      "m": "大きい",
+      "f": "大きい",
+      "n": "大きい"
+    },
+    "small": {
+      "m": "小さい",
+      "f": "小さい",
+      "n": "小さい"
+    },
+    "new": {
+      "m": "新しい",
+      "f": "新しい",
+      "n": "新しい"
+    },
+    "good": {
+      "m": "いい",
+      "f": "いい",
+      "n": "いい"
+    }
+  }
+}

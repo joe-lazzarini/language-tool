@@ -17,6 +17,11 @@
   --mine-on: #f4fffc;
   --mine-bg: #d7f3ee;
   --mine-line: #0a5c56;
+  --sentence: #243e73;
+  --sentence-ink: #172848;
+  --sentence-on: #f4f7ff;
+  --sentence-bg: #e4ebf8;
+  --sentence-line: #243e73;
   --shadow: 0 18px 40px rgba(52, 32, 16, 0.12);
   font-family: Outfit, "Segoe UI", sans-serif;
   line-height: 1.45;
@@ -632,6 +637,111 @@ a {
   width: 100%;
 }
 
+.sentence-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--sentence-bg);
+  border: 2px solid var(--sentence-line);
+  color: var(--sentence-ink);
+}
+
+.sentence-card-title {
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.7rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.sentence-card-pair,
+.sentence-card-hint {
+  margin: 0;
+}
+
+.sentence-card-pair {
+  font-weight: 650;
+}
+
+.sentence-card-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.sentence-open {
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 16px;
+  background: var(--sentence);
+  color: var(--sentence-on);
+  font-weight: 650;
+}
+
+.sentence-open:hover {
+  transform: translateY(-1px);
+}
+
+.sentence-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.sentence-group h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.sentence-words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.sentence-words li {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sentence-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.25rem;
+}
+
+.sentence-known {
+  border: 1px solid var(--sentence-line);
+  border-radius: 11px;
+  padding: 8px 12px;
+  background: var(--cream);
+  color: var(--sentence-ink);
+  font-weight: 650;
+}
+
+.sentence-known.on {
+  background: var(--sentence);
+  color: var(--sentence-on);
+}
+
+.sentence-known:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .account {
   display: grid;
   gap: 10px;
@@ -772,6 +882,10 @@ a {
   }
 
   .accepted-edit {
+    grid-template-columns: 1fr;
+  }
+
+  .sentence-card {
     grid-template-columns: 1fr;
   }
 }

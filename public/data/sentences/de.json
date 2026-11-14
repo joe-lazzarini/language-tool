@@ -1,0 +1,112 @@
+{
+  "frames": {
+    "vi": "{subject} {verb}.",
+    "vt": "{subject} {verb} {object}.",
+    "adj": "{subject} ist {adj}."
+  },
+  "nouns": {
+    "house": {
+      "npNom": "das Haus",
+      "npAcc": "das Haus",
+      "gender": "n"
+    },
+    "dog": {
+      "npNom": "der Hund",
+      "npAcc": "den Hund",
+      "gender": "m"
+    },
+    "child": {
+      "npNom": "das Kind",
+      "npAcc": "das Kind",
+      "gender": "n"
+    },
+    "book": {
+      "npNom": "das Buch",
+      "npAcc": "das Buch",
+      "gender": "n"
+    },
+    "water": {
+      "npNom": "das Wasser",
+      "npAcc": "das Wasser",
+      "gender": "n"
+    },
+    "school": {
+      "npNom": "die Schule",
+      "npAcc": "die Schule",
+      "gender": "f"
+    },
+    "car": {
+      "npNom": "das Auto",
+      "npAcc": "das Auto",
+      "gender": "n"
+    },
+    "city": {
+      "npNom": "die Stadt",
+      "npAcc": "die Stadt",
+      "gender": "f"
+    },
+    "cat": {
+      "npNom": "die Katze",
+      "npAcc": "die Katze",
+      "gender": "f"
+    },
+    "bread": {
+      "npNom": "das Brot",
+      "npAcc": "das Brot",
+      "gender": "n"
+    },
+    "friend": {
+      "npNom": "der Freund",
+      "npAcc": "den Freund",
+      "gender": "m"
+    }
+  },
+  "verbs": {
+    "sleep": {
+      "form": "schläft"
+    },
+    "work": {
+      "form": "arbeitet"
+    },
+    "wait": {
+      "form": "wartet"
+    },
+    "read": {
+      "form": "liest"
+    },
+    "see": {
+      "form": "sieht"
+    },
+    "eat": {
+      "form": "isst"
+    },
+    "drink": {
+      "form": "trinkt"
+    },
+    "write": {
+      "form": "schreibt"
+    }
+  },
+  "adjectives": {
+    "big": {
+      "m": "groß",
+      "f": "groß",
+      "n": "groß"
+    },
+    "small": {
+      "m": "klein",
+      "f": "klein",
+      "n": "klein"
+    },
+    "new": {
+      "m": "neu",
+      "f": "neu",
+      "n": "neu"
+    },
+    "good": {
+      "m": "gut",
+      "f": "gut",
+      "n": "gut"
+    }
+  }
+}

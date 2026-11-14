@@ -24,13 +24,13 @@ export function AccountBar({
     <section className="account" aria-label="Account">
       {!configured && (
         <p className="note">
-          Cloud sync isn't configured for this build. Words you add stay in this browser.
+          Cloud sync isn't configured for this build. Words and practice stay in this browser.
         </p>
       )}
       {configured && !account && (
         <div className="account-row">
           <p className="hint">
-            Sign in with Google to sync words across devices. Until then they stay in this browser.
+            Sign in with Google to sync words and practice across devices. Until then they stay in this browser.
           </p>
           <button type="button" className="secondary" onClick={onSignIn} disabled={!ready || signingIn}>
             {signingIn ? "Signing in…" : "Sign in with Google"}
@@ -39,7 +39,7 @@ export function AccountBar({
       )}
       {configured && account && (
         <div className="account-row">
-          <p className="hint">Signed in as {name}. Your words sync to this account.</p>
+          <p className="hint">Signed in as {name}. Your words and practice sync to this account.</p>
           <button type="button" className="ghost" onClick={onSignOut}>
             Sign out
           </button>

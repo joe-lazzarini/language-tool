@@ -1,0 +1,112 @@
+{
+  "frames": {
+    "vi": "{subject} {verb}.",
+    "vt": "{subject} {verb} {object}.",
+    "adj": "{subject} is {adj}."
+  },
+  "nouns": {
+    "house": {
+      "npNom": "het huis",
+      "npAcc": "het huis",
+      "gender": "n"
+    },
+    "dog": {
+      "npNom": "de hond",
+      "npAcc": "de hond",
+      "gender": "m"
+    },
+    "child": {
+      "npNom": "het kind",
+      "npAcc": "het kind",
+      "gender": "n"
+    },
+    "book": {
+      "npNom": "het boek",
+      "npAcc": "het boek",
+      "gender": "n"
+    },
+    "water": {
+      "npNom": "het water",
+      "npAcc": "het water",
+      "gender": "n"
+    },
+    "school": {
+      "npNom": "de school",
+      "npAcc": "de school",
+      "gender": "f"
+    },
+    "car": {
+      "npNom": "de auto",
+      "npAcc": "de auto",
+      "gender": "m"
+    },
+    "city": {
+      "npNom": "de stad",
+      "npAcc": "de stad",
+      "gender": "f"
+    },
+    "cat": {
+      "npNom": "de kat",
+      "npAcc": "de kat",
+      "gender": "m"
+    },
+    "bread": {
+      "npNom": "het brood",
+      "npAcc": "het brood",
+      "gender": "n"
+    },
+    "friend": {
+      "npNom": "de vriend",
+      "npAcc": "de vriend",
+      "gender": "m"
+    }
+  },
+  "verbs": {
+    "sleep": {
+      "form": "slaapt"
+    },
+    "work": {
+      "form": "werkt"
+    },
+    "wait": {
+      "form": "wacht"
+    },
+    "read": {
+      "form": "leest"
+    },
+    "see": {
+      "form": "ziet"
+    },
+    "eat": {
+      "form": "eet"
+    },
+    "drink": {
+      "form": "drinkt"
+    },
+    "write": {
+      "form": "schrijft"
+    }
+  },
+  "adjectives": {
+    "big": {
+      "m": "groot",
+      "f": "groot",
+      "n": "groot"
+    },
+    "small": {
+      "m": "klein",
+      "f": "klein",
+      "n": "klein"
+    },
+    "new": {
+      "m": "nieuw",
+      "f": "nieuw",
+      "n": "nieuw"
+    },
+    "good": {
+      "m": "goed",
+      "f": "goed",
+      "n": "goed"
+    }
+  }
+}

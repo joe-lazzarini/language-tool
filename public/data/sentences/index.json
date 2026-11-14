@@ -1,0 +1,228 @@
+{
+  "nouns": [
+    {
+      "id": "house",
+      "sem": [
+        "place",
+        "thing"
+      ],
+      "deckIds": [
+        "pl-103",
+        "de-156"
+      ]
+    },
+    {
+      "id": "dog",
+      "sem": [
+        "animal"
+      ],
+      "deckIds": [
+        "pl-949",
+        "de-757"
+      ]
+    },
+    {
+      "id": "child",
+      "sem": [
+        "person"
+      ],
+      "deckIds": [
+        "pl-111",
+        "de-150"
+      ]
+    },
+    {
+      "id": "book",
+      "sem": [
+        "thing",
+        "readable"
+      ],
+      "deckIds": [
+        "pl-261",
+        "de-328"
+      ]
+    },
+    {
+      "id": "water",
+      "sem": [
+        "drink"
+      ],
+      "deckIds": [
+        "pl-306",
+        "de-417"
+      ]
+    },
+    {
+      "id": "school",
+      "sem": [
+        "place"
+      ],
+      "deckIds": [
+        "pl-281",
+        "de-333"
+      ]
+    },
+    {
+      "id": "car",
+      "sem": [
+        "thing"
+      ],
+      "deckIds": [
+        "pl-325",
+        "de-966"
+      ]
+    },
+    {
+      "id": "city",
+      "sem": [
+        "place"
+      ],
+      "deckIds": [
+        "pl-144",
+        "de-68"
+      ]
+    },
+    {
+      "id": "cat",
+      "sem": [
+        "animal"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "bread",
+      "sem": [
+        "food"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "friend",
+      "sem": [
+        "person"
+      ],
+      "deckIds": [
+        "de-530"
+      ]
+    }
+  ],
+  "verbs": [
+    {
+      "id": "sleep",
+      "valence": "vi",
+      "subject": [
+        "person",
+        "animal"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "work",
+      "valence": "vi",
+      "subject": [
+        "person"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "wait",
+      "valence": "vi",
+      "subject": [
+        "person",
+        "animal"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "read",
+      "valence": "vt",
+      "subject": [
+        "person"
+      ],
+      "object": [
+        "readable"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "see",
+      "valence": "vt",
+      "subject": [
+        "person",
+        "animal"
+      ],
+      "object": [
+        "person",
+        "animal",
+        "place",
+        "thing"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "eat",
+      "valence": "vt",
+      "subject": [
+        "person",
+        "animal"
+      ],
+      "object": [
+        "food"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "drink",
+      "valence": "vt",
+      "subject": [
+        "person",
+        "animal"
+      ],
+      "object": [
+        "drink"
+      ],
+      "deckIds": []
+    },
+    {
+      "id": "write",
+      "valence": "vt",
+      "subject": [
+        "person"
+      ],
+      "object": [
+        "readable"
+      ],
+      "deckIds": []
+    }
+  ],
+  "adjectives": [
+    {
+      "id": "big",
+      "deckIds": [
+        "pl-67",
+        "de-49"
+      ]
+    },
+    {
+      "id": "small",
+      "deckIds": [
+        "pl-132",
+        "de-100"
+      ]
+    },
+    {
+      "id": "new",
+      "deckIds": [
+        "pl-65",
+        "de-55"
+      ]
+    },
+    {
+      "id": "good",
+      "deckIds": [
+        "pl-71",
+        "de-44"
+      ]
+    }
+  ]
+}
