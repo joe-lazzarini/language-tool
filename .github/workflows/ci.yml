@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+# Cancel a run when a newer commit is pushed to the same branch or pull request.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: |
+          # No lint script is configured. Run it once one is added.
+          if [ "$(npm pkg get scripts.lint)" = "{}" ]; then
+            echo "No lint script configured; skipping."
+          else
+            npm run lint
+          fi
+
+      - name: Typecheck
+        run: npx tsc -b --pretty false
+
+      - name: Test
+        run: npm test -- --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/vitest.json"
+
+      - name: Require every test file
+        run: |
+          node --input-type=module <<'EOF'
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          import { relative } from "node:path";
+
+          const report = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/vitest.json`, "utf8"));
+          if (!report.success || report.numFailedTests !== 0 || report.numTotalTests < 1) {
+            console.error(
+              `Expected a green suite. success=${report.success} failed=${report.numFailedTests} total=${report.numTotalTests}`,
+            );
+            process.exit(1);
+          }
+
+          const toRepoPath = (file) => {
+            const rel = relative(process.cwd(), file);
+            return rel.startsWith("..") ? file : rel;
+          };
+          const ran = [...new Set(report.testResults.map((result) => toRepoPath(result.name)))].sort();
+          const onDisk = execFileSync(
+            "find",
+            [
+              ".",
+              "(",
+              "-path",
+              "./node_modules",
+              "-o",
+              "-path",
+              "./dist",
+              ")",
+              "-prune",
+              "-o",
+              "-type",
+              "f",
+              "(",
+              "-name",
+              "*.test.*",
+              "-o",
+              "-name",
+              "*.spec.*",
+              ")",
+              "-print",
+            ],
+            { encoding: "utf8" },
+          )
+            .split("\n")
+            .map((line) => line.replace(/^\.\//, ""))
+            .filter(Boolean)
+            .sort();
+
+          const missed = onDisk.filter((file) => !ran.includes(file));
+          const extra = ran.filter((file) => !onDisk.includes(file));
+          if (missed.length || extra.length) {
+            console.error("Vitest did not run exactly the test files on disk.");
+            if (missed.length) console.error(`Missing:\n${missed.map((file) => `  ${file}`).join("\n")}`);
+            if (extra.length) console.error(`Unexpected:\n${extra.map((file) => `  ${file}`).join("\n")}`);
+            process.exit(1);
+          }
+
+          console.log(`Ran all ${ran.length} test files, ${report.numTotalTests} tests.`);
+          for (const file of ran) {
+            const count = report.testResults.find((result) => toRepoPath(result.name) === file).assertionResults.length;
+            console.log(`  ${file} (${count})`);
+          }
+          EOF
+
+      - name: Build
+        run: npm run build

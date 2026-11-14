@@ -6,5 +6,8 @@ export default defineConfig({
   base: "/language-tool/",
   test: {
     environment: "node",
+    // Every suite in the repo, including scripts/*.test.mjs.
+    // CI fails if a *.test.* or *.spec.* file on disk is outside this pattern.
+    include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)"],
   },
 });
