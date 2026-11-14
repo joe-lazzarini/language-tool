@@ -47,7 +47,8 @@ export function decideAdvanceKey(input: AdvanceKeyInput): AdvanceKeyDecision {
     return { type: "remember", preventRepeat: true, preventDefault: true };
   }
 
-  // Let an IME commit, but keep the key from skipping the result on keyup/repeat.
+  // Chinese / Japanese IME: Enter and Space select a candidate. Do not grade or
+  // advance while composing (isComposing or keyCode 229).
   if (input.composing) {
     if (!input.repeat && !input.held) {
       return { type: "remember", preventRepeat: false, preventDefault: false };

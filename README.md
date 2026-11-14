@@ -1,6 +1,6 @@
 # Słówka
 
-A small static web app for studying and testing common lemmas across the languages in the registry (English, Polish, German, Spanish, French, Italian, Portuguese, Dutch, Russian, and Japanese). You pick any two — a prompt language and an answer language — type a translation, and get immediate correct / incorrect feedback. When the answer is shown, **each accepted form is listed with a short context** (gender, sense, register, or romanization).
+A small static web app for studying and testing common lemmas across the languages in the registry (English, Polish, German, Spanish, French, Italian, Portuguese, Dutch, Russian, Japanese, and Mandarin Chinese). You pick any two — a prompt language and an answer language — type a translation, and get immediate correct / incorrect feedback. When the answer is shown, **each accepted form is listed with a short context** (gender, sense, register, or romanization).
 
 One concept per card. Citation form for open-class words: nominative singular nouns, base adjectives, infinitive verbs. Closed-class gender families (articles, demonstratives, possessive and relative pronouns) are **one card** that accepts the nominative forms a learner would reasonably type.
 
@@ -12,7 +12,7 @@ One concept per card. Citation form for open-class words: nominative singular no
 - **Sentence quiz:** a separate card and screen (`#sentence`). Once you know enough words on both sides of the pair, it builds short sentences from those words and asks you to translate them. Two correct answers in a row in this direction count as knowing a word. You can also mark a sentence word by hand. Articles and other grammar stay in the template, so the sentences stay grammatical offline.
 - **Any two different languages.** Prompt and answer each have a menu, plus a swap button. The pair is saved in this browser. A new visit starts at English → Polish.
 - Frequency bands (first 100 / 250 / 500 / all, plus later slices) and round sizes of 10, 20, 50, or the whole band. When the pair includes Polish or German, that side’s frequency list decides which cards and which order. Other pairs share one concept list, ordered by the best Polish or German rank those cards have.
-- **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
+- **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. Mandarin also accepts pinyin with tone marks, tone numbers (*ni3 hao3*), or no tones, ignoring spaces. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
 - **Add a word** you came across. It is saved for the language pair you currently have selected (English → Polish and Polish → English share one list). Type it in one of those two languages. The app fills in the other, you confirm or edit it, then save.
 - **Your words** join study and quiz for that pair: they are part of the full deck, and you can also select the **My words** band. The count, the list, and My words follow the pair you pick. Edit or delete them from the list.
 - **Sync** is optional. Without Firebase config, words and practice stay in this browser (`localStorage`). With Firebase, Google sign-in stores words and practice in Firestore. The first sign-in merges what is already saved on the device. Practice writes are debounced, one document per direction, not one write per answer.
@@ -48,7 +48,7 @@ Open **Sentence quiz** on the home screen. The card shows how many of the senten
 
 A word counts as known in a language when, in the direction that asks you to produce that language, the last two graded answers were correct, or you marked it on the sentence screen. A later miss drops the “two in a row” condition. A mark stays until you clear it. Quiz and study checks are graded attempts. A quiz skip counts as a miss. A study reveal does not. Sentence-quiz answers do not change word accuracy.
 
-The sentences are filled from `public/data/sentences/`. `index.json` is the shared lexicon (part of speech, which nouns can be subjects or objects, and the deck ids that count as knowing that word). `public/data/sentences/<code>.json` is loaded the first time that language is needed. Each file stores the frame and the exact form the frame needs, including gender, case, and the article, so Polish, German, Russian, and the others stay grammatical without a conjugation engine. Japanese also accepts the plain verb and the adjective without です. Typed answers ignore case, extra spaces, and a final period. They do not ignore a missing article.
+The sentences are filled from `public/data/sentences/`. `index.json` is the shared lexicon (part of speech, which nouns can be subjects or objects, and the deck ids that count as knowing that word). `public/data/sentences/<code>.json` is loaded the first time that language is needed. Each file stores the frame and the exact form the frame needs, including gender, case, and the article, so Polish, German, Russian, and the others stay grammatical without a conjugation engine. Japanese also accepts the plain verb and the adjective without です. Mandarin templates stay simple (no inflection): subject–verb–object frames and *很* before adjectives. Typed answers ignore case, extra spaces, and a final period. They do not ignore a missing article.
 
 ## Continuous integration
 
@@ -66,8 +66,11 @@ Vitest includes `**/*.{test,spec}.?(c|m)[jt]s?(x)` (`vite.config.ts`). That patt
 - `src/lib/customWords.test.ts`
 - `src/lib/deck.test.ts`
 - `src/lib/firebaseConfig.test.ts`
+- `src/lib/ime.test.ts`
+- `src/lib/languages.test.ts`
 - `src/lib/match.test.ts`
 - `src/lib/mymemory.test.ts`
+- `src/lib/pinyin.test.ts`
 - `src/lib/translate.test.ts`
 - `src/lib/wiktionary.test.ts`
 - `src/sentence/SentenceCard.test.tsx`

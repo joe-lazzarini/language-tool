@@ -43,6 +43,7 @@ const goldens: Record<string, Record<LangCode, string>> = {
     nl: "De kat slaapt.",
     ru: "Кошка спит.",
     ja: "猫は寝ます。",
+    zh: "猫睡觉。",
   },
   "vt:child:read:book": {
     en: "The child reads the book.",
@@ -55,6 +56,7 @@ const goldens: Record<string, Record<LangCode, string>> = {
     nl: "Het kind leest het boek.",
     ru: "Ребёнок читает книгу.",
     ja: "子供は本を読みます。",
+    zh: "孩子读书。",
   },
   "adj:house:big": {
     en: "The house is big.",
@@ -67,6 +69,7 @@ const goldens: Record<string, Record<LangCode, string>> = {
     nl: "Het huis is groot.",
     ru: "Дом большой.",
     ja: "家は大きいです。",
+    zh: "房子很大。",
   },
   "adj:water:small": {
     en: "The water is small.",
@@ -79,6 +82,7 @@ const goldens: Record<string, Record<LangCode, string>> = {
     nl: "Het water is klein.",
     ru: "Вода маленькая.",
     ja: "水は小さいです。",
+    zh: "水很小。",
   },
   "vt:dog:see:friend": {
     en: "The dog sees the friend.",
@@ -91,6 +95,7 @@ const goldens: Record<string, Record<LangCode, string>> = {
     nl: "De hond ziet de vriend.",
     ru: "Собака видит друга.",
     ja: "犬は友達を見ます。",
+    zh: "狗看朋友。",
   },
 };
 
@@ -120,7 +125,7 @@ describe("sentence templates", () => {
       for (const sentence of allKnown(code, code)) {
         expect(sentence.prompt.includes("{")).toBe(false);
         expect(sentence.accepted[0]?.includes("{")).toBe(false);
-        expect(sentence.prompt.endsWith(code === "ja" ? "。" : ".")).toBe(true);
+        expect(sentence.prompt.endsWith(code === "ja" || code === "zh" ? "。" : ".")).toBe(true);
       }
     }
   });

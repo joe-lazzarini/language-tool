@@ -1,4 +1,5 @@
 import { languageByCode, type LangCode } from "./languages";
+import { foldPinyin, looksLikePinyin } from "./pinyin";
 import type { AcceptedAnswer } from "../types";
 
 export type AnswerLike = string | AcceptedAnswer;
@@ -54,13 +55,33 @@ function addTarget(targets: Set<string>, raw: string, lang?: LangCode): void {
       targets.add(n.slice(prefix.length));
     }
   }
+  if (lang === "zh" && looksLikePinyin(raw)) {
+    const folded = foldPinyin(raw);
+    if (folded) targets.add(folded);
+  }
+}
+
+function addZhContextTargets(targets: Set<string>, item: AnswerLike): void {
+  if (typeof item === "string") return;
+  const context = item.context?.trim();
+  // "pinyin" marks a romanization accepted answer; it is not itself a reading.
+  if (!context || context === "pinyin") return;
+  // Hand / Wiktionary rows use "nǐ · informal" — only the reading before · counts.
+  const reading = context.split(/\s*·\s*/u)[0]?.trim() ?? "";
+  if (!reading || !looksLikePinyin(reading)) return;
+  addTarget(targets, reading, "zh");
+  const folded = foldPinyin(reading);
+  if (folded) targets.add(folded);
 }
 
 /** Every string that should count as a correct typed answer. */
 export function matchingTargets(expected: string, accepted: AnswerLike[] = [], lang?: LangCode): Set<string> {
   const targets = new Set<string>();
   addTarget(targets, expected, lang);
-  for (const item of accepted) addTarget(targets, answerText(item), lang);
+  for (const item of accepted) {
+    addTarget(targets, answerText(item), lang);
+    if (lang === "zh") addZhContextTargets(targets, item);
+  }
   return targets;
 }
 
@@ -72,5 +93,14 @@ export function isCorrectAnswer(
 ): boolean {
   const user = normalizeAnswer(given, lang);
   if (!user) return false;
-  return matchingTargets(expected, accepted, lang).has(user);
+  const targets = matchingTargets(expected, accepted, lang);
+  if (targets.has(user)) return true;
+  if (lang !== "zh") return false;
+  const foldedUser = foldPinyin(given);
+  if (!foldedUser) return false;
+  if (targets.has(foldedUser)) return true;
+  for (const target of targets) {
+    if (foldPinyin(target) === foldedUser) return true;
+  }
+  return false;
 }

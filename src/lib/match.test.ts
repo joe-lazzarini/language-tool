@@ -84,6 +84,32 @@ describe("isCorrectAnswer", () => {
     expect(isCorrectAnswer("café", "café", [], "fr")).toBe(true);
   });
 
+  it("accepts Simplified Chinese Hanzi and pinyin with or without tones", () => {
+    const accepted = [
+      { text: "你好", context: "nǐ hǎo" },
+      { text: "nǐ hǎo", context: "pinyin" },
+    ];
+    expect(isCorrectAnswer("你好", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("nǐ hǎo", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("ni3 hao3", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("nihao", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("Ni Hao", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("您好", "你好", accepted, "zh")).toBe(false);
+    // The context label "pinyin" must not become an accepted typed answer.
+    expect(isCorrectAnswer("pinyin", "你好", accepted, "zh")).toBe(false);
+  });
+
+  it("reads tone-marked pinyin from Hanzi context before a sense gloss", () => {
+    const accepted = [{ text: "你", context: "nǐ · informal" }];
+    expect(isCorrectAnswer("ni", "你", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("informal", "你", accepted, "zh")).toBe(false);
+  });
+
+  it("accepts Chinese answers without Wiktionary slot ellipses", () => {
+    expect(isCorrectAnswer("在期间", "在……期间", [], "zh")).toBe(true);
+    expect(isCorrectAnswer("没有人", "没有人", [{ text: "没人" }], "zh")).toBe(true);
+  });
+
   it("strips a leading to only for English answers", () => {
     expect(isCorrectAnswer("want", "to want", [], "en")).toBe(true);
     expect(isCorrectAnswer("to być", "być", [], "pl")).toBe(false);

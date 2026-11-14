@@ -172,6 +172,15 @@ function joinContext(gender: string | undefined, qual: string | undefined): stri
   return parts.length ? parts.join(" · ") : undefined;
 }
 
+function pinyinFromParams(params: string): string | undefined {
+  const match = /(?:^|\|)tr=([^}|]+)/.exec(params);
+  if (!match) return undefined;
+  const tr = match[1].trim();
+  if (!tr || !/[A-Za-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüÜ]/.test(tr)) return undefined;
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(tr)) return undefined;
+  return tr.split(/[,;/]/)[0]?.trim() || undefined;
+}
+
 export function parseTranslationList(chunk: string): AcceptedAnswer[] {
   const pattern = /\{\{(?:tt|t)\+?\|([a-z]{2,3})\|([^|}]+)([^}]*)\}\}/g;
   const answers: AcceptedAnswer[] = [];
@@ -185,9 +194,24 @@ export function parseTranslationList(chunk: string): AcceptedAnswer[] {
     const text = cleanWikiText(match[2]);
     const qual = readableQual(qualAfter?.[1] ?? qualBefore?.[1]);
     const skip = Boolean(qual && /humorous|archaic|obsolete|rare|dated/i.test(qual));
-    if (!skip && text && !text.includes("{") && text.length <= 48 && !text.includes(":")) {
-      const context = joinContext(genderFrom(match[3]), qual);
+    const traditional = /(?:^|\|)sc=Hant(?:\||$)/.test(match[3] ?? "");
+    if (
+      !skip &&
+      !traditional &&
+      text &&
+      !text.includes("{") &&
+      text.length <= 48 &&
+      !text.includes(":")
+    ) {
+      const code = match[1];
+      const pinyin = code === "zh" ? pinyinFromParams(match[3] ?? "") : undefined;
+      const gender = genderFrom(match[3]);
+      const context =
+        pinyin && gender ? `${pinyin} · ${gender}` : pinyin || joinContext(gender, qual);
       answers.push(context ? { text, context } : { text });
+      if (pinyin && pinyin.toLowerCase() !== text.toLowerCase()) {
+        answers.push({ text: pinyin, context: "pinyin" });
+      }
     }
     cursor = end + (qualAfter ? qualAfter[0].length : 0);
   }
@@ -215,7 +239,10 @@ function firstTranslations(section: string): Partial<Record<LangCode, AcceptedAn
   if (!block) return {};
   const out: Partial<Record<LangCode, AcceptedAnswer[]>> = {};
   for (const line of block.split("\n")) {
-    const bullet = /^\*\s*([A-Za-z][A-Za-z -]*?):\s*(.*)$/.exec(line.trim());
+    const trimmed = line.trim();
+    const bullet =
+      /^\*\s*([A-Za-z][A-Za-z -]*?):\s*(.*)$/.exec(trimmed) ||
+      /^\*+:\s*([A-Za-z][A-Za-z -]*?):\s*(.*)$/.exec(trimmed);
     if (!bullet) continue;
     const code = NAME_TO_CODE[bullet[1].trim()];
     if (!code || out[code]?.length) continue;
