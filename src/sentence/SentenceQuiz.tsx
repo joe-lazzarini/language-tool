@@ -3,6 +3,7 @@ import { AnswerReveal } from "../components/AnswerReveal";
 import { SpecialKeys } from "../components/SpecialKeys";
 import type { WordStat } from "../accuracy/stats";
 import { knownIdSet } from "../accuracy/stats";
+import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "../lib/advanceKey";
 import {
   answerPlaceholder,
   languageByCode,
@@ -130,6 +131,8 @@ export function SentenceQuiz({
   const [results, setResults] = useState<{ sentence: PracticeSentence; correct: boolean; given: string }[]>([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
+  const nextRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +170,10 @@ export function SentenceQuiz({
   useEffect(() => {
     if (phase === "round") inputRef.current?.focus();
   }, [phase, index, done]);
+
+  useEffect(() => {
+    if (revealed) inputRef.current?.blur();
+  }, [revealed]);
 
   function toggle(side: "prompt" | "answer", id: string, manual: boolean) {
     if (side === "answer") onToggleManual(from, to, id, manual);
@@ -230,6 +237,40 @@ export function SentenceQuiz({
     setRevealed(false);
     setCorrect(null);
   }
+
+  nextRef.current = next;
+
+  useEffect(() => {
+    if (phase !== "round" || done) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      const kind = keyTargetKind(event.target);
+      const result = applyAdvanceKey(heldKeys.current, {
+        key: event.key,
+        repeat: event.repeat,
+        revealed,
+        composing: event.isComposing || event.keyCode === 229,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        typingTarget: kind === "typing",
+        activationTarget: kind === "activation",
+      });
+      if (result.preventDefault) event.preventDefault();
+      if (result.advance) nextRef.current();
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      releaseAdvanceKey(heldKeys.current, event.key);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [phase, revealed, done]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -357,9 +398,12 @@ export function SentenceQuiz({
                 </button>
               </>
             ) : (
-              <button type="submit" className="primary">
-                {index + 1 >= round.length ? "Finish" : "Next"}
-              </button>
+              <div className="next-row">
+                <button type="submit" className="primary">
+                  {index + 1 >= round.length ? "Finish" : "Next"}
+                </button>
+                <p className="hint advance-hint">Press Enter or Space</p>
+              </div>
             )}
           </div>
         </form>
