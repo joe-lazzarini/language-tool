@@ -36,9 +36,81 @@ npm run preview   # serve the production build
 
 Copy `.env.example` to `.env` and fill in the Firebase web config if you want cloud sync locally. Leave the values empty to stay on this browser only. Restart `npm run dev` after changing `.env`.
 
-The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The build job reads `VITE_FIREBASE_*` from the `github-pages` environment (variables, then secrets of the same name). If they are unset, the deployed site still builds and keeps words on the device.
+The app is a Vite + React static site. GitHub Actions builds `dist/` and publishes it to GitHub Pages. The build job reads `VITE_FIREBASE_*` from the `github-pages` environment (variables, then secrets of the same name). If they are unset, the deployed site still builds and keeps words on the device. Pull requests run the CI workflow below. That workflow does not deploy.
 
 **Live site:** https://joe-lazzarini.github.io/language-tool/
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on pushes to branches other than `main`. The job name is `ci` (that is the required-check name). It uses Node.js 20, caches npm packages from `package-lock.json`, and installs with `npm ci`. `package.json` has no `lint` script, so the lint step skips until one exists. The job then typechecks with `tsc -b`, runs `npm test` (`vitest run`), and runs `npm run build`. A newer push to the same branch or pull request cancels the older run.
+
+Vitest includes `**/*.{test,spec}.?(c|m)[jt]s?(x)` (`vite.config.ts`). That pattern is every test file in the repo. The only suites are:
+
+- `scripts/deploy-firestore-rules.test.mjs`
+- `src/components/AddWord.test.tsx`
+- `src/components/AnswerReveal.test.tsx`
+- `src/lib/customWords.test.ts`
+- `src/lib/deck.test.ts`
+- `src/lib/firebaseConfig.test.ts`
+- `src/lib/match.test.ts`
+- `src/lib/mymemory.test.ts`
+- `src/lib/translate.test.ts`
+- `src/lib/wiktionary.test.ts`
+
+There is no second test runner. After the suite, CI compares that run with every `*.test.*` and `*.spec.*` file outside `node_modules` and `dist`, and fails if one was skipped.
+
+Pushes to `main` do not run this workflow. **Deploy GitHub Pages** still builds and publishes `main`, then publishes Firestore rules.
+
+### Require `ci` before merging
+
+This repo’s automation token cannot edit rules. `POST /repos/joe-lazzarini/language-tool/rulesets` and `PUT /repos/joe-lazzarini/language-tool/branches/main/protection` both return `403 Resource not accessible by integration`. `GET /repos/joe-lazzarini/language-tool/rulesets` is `[]`, so no ruleset is on `main` yet. Until the check is required, a pull request can merge while `ci` is failing.
+
+Add it under **Settings → Rules → Rulesets** (or the classic screen at **Settings → Branches**). The status check to require is `ci`. In the rules UI the row is often shown as `CI / ci`.
+
+Agents merge with `git merge --no-ff origin/<branch>` on `main` and then push, because the pull-request merge API returns 403 for the agent token. GitHub accepts that push of a merge commit when the branch is up to date with `main` and `ci` has passed on the branch head. The merge commit itself does not need a status check. The ruleset below is only the status check, with branches not required to be up to date before using the GitHub merge button. Leave these rules off. Each one rejects that push:
+
+- Require a pull request before merging
+- Require linear history (merge commits are then forbidden)
+
+If the local push is rejected, merge `main` into the branch, wait until `ci` is green on that new head, and run `git merge --no-ff` again. There is no bypass actor, so the owner is held to the same check. The local merge above is how a green branch still lands on `main`.
+
+Run this after `ci` has succeeded at least once (the check name has to exist). It needs a token that can edit repository rules. `integration_id` `15368` is GitHub Actions, so only that app can satisfy the check.
+
+```bash
+gh api --method POST repos/joe-lazzarini/language-tool/rulesets \
+  -H "Accept: application/vnd.github+json" \
+  --input - <<'EOF'
+{
+  "name": "Require CI on main",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "ci",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}
+EOF
+```
+
+On **Settings → Branches**, the same gate is a classic rule for `main`: enable “Require status checks to pass before merging”, add `ci`, and leave “Require branches to be up to date before merging” unchecked. Leave “Require a pull request before merging” and “Require linear history” off. A `PUT` of branch protection replaces the whole protection document, so prefer the ruleset command above, which only adds this check.
 
 ## Add a word
 
