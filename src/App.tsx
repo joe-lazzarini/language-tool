@@ -34,6 +34,7 @@ import {
 } from "./lib/languages";
 import { focusHint, selectCards, weakCount } from "./accuracy/stats";
 import { useAccuracy } from "./accuracy/useAccuracy";
+import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isCorrectAnswer } from "./lib/match";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
@@ -334,7 +335,7 @@ function Home({
   );
 }
 
-function Session({
+export function Session({
   words,
   mode,
   from,
@@ -356,6 +357,8 @@ function Session({
   const [results, setResults] = useState<CardResult[]>([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
+  const nextRef = useRef<() => void>(() => {});
 
   const word = words[index];
   const total = words.length;
@@ -366,6 +369,10 @@ function Session({
   useEffect(() => {
     inputRef.current?.focus();
   }, [index, done]);
+
+  useEffect(() => {
+    if (revealed) inputRef.current?.blur();
+  }, [revealed]);
 
   function insertLetter(letter: string) {
     const field = inputRef.current;
@@ -413,6 +420,40 @@ function Session({
     setRevealed(false);
     setCorrect(null);
   }
+
+  nextRef.current = next;
+
+  useEffect(() => {
+    if (done) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      const kind = keyTargetKind(event.target);
+      const result = applyAdvanceKey(heldKeys.current, {
+        key: event.key,
+        repeat: event.repeat,
+        revealed,
+        composing: event.isComposing || event.keyCode === 229,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        typingTarget: kind === "typing",
+        activationTarget: kind === "activation",
+      });
+      if (result.preventDefault) event.preventDefault();
+      if (result.advance) nextRef.current();
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      releaseAdvanceKey(heldKeys.current, event.key);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [revealed, done]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -538,9 +579,12 @@ function Session({
               </button>
             </>
           ) : (
-            <button type="submit" className="primary">
-              {index + 1 >= total ? "Finish" : "Next"}
-            </button>
+            <div className="next-row">
+              <button type="submit" className="primary">
+                {index + 1 >= total ? "Finish" : "Next"}
+              </button>
+              <p className="hint advance-hint">Press Enter or Space</p>
+            </div>
           )}
         </div>
       </form>
