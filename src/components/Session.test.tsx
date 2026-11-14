@@ -338,4 +338,50 @@ describe("Session advance shortcut", () => {
     expect(prompt(container)).toBe("dog");
     expect(container.textContent).toContain("0 correct");
   });
+
+  it("does not grade or advance while a Chinese IME is composing", async () => {
+    const { container } = session("quiz");
+    const input = answerInput(container);
+    setValue(input, "ni");
+    act(() => {
+      input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    });
+    const composingEnter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+      // jsdom KeyboardEventInit typing omits keyCode; IMEs still set 229.
+      ...({ keyCode: 229 } as object),
+    });
+    Object.defineProperty(composingEnter, "isComposing", { value: true });
+    act(() => {
+      input.dispatchEvent(composingEnter);
+      if (!composingEnter.defaultPrevented && input.form) {
+        input.form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      }
+    });
+    expect(prompt(container)).toBe("cat");
+    expect(container.querySelector(".feedback")).toBeNull();
+
+    const composingSpace = new KeyboardEvent("keydown", {
+      key: " ",
+      bubbles: true,
+      cancelable: true,
+      ...({ keyCode: 229 } as object),
+    });
+    Object.defineProperty(composingSpace, "isComposing", { value: true });
+    act(() => {
+      input.dispatchEvent(composingSpace);
+    });
+    expect(prompt(container)).toBe("cat");
+    expect(container.querySelector(".feedback")).toBeNull();
+
+    await act(async () => {
+      input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "你" }));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    setValue(input, "kot");
+    pressKey("Enter", { target: input });
+    expect(container.querySelector(".ok-text")?.textContent).toBe("Correct");
+  });
 });

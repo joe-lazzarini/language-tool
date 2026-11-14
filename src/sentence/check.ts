@@ -12,7 +12,7 @@ export function foldSentence(value: string, lang: LangCode): string {
     .replace(TRAILING, "")
     .trim();
   const folded = normalizeAnswer(stripped, lang);
-  if (lang === "ja") return folded.replace(/[\s\u3000]+/g, "");
+  if (lang === "ja" || lang === "zh") return folded.replace(/[\s\u3000]+/g, "");
   return folded;
 }
 

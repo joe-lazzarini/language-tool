@@ -334,14 +334,18 @@ describe("bundled multilingual deck", () => {
     expect(texts(ten!, "es")).toEqual(expect.arrayContaining(["este", "esta", "esto"]));
     expect(texts(ten!, "ru")).toEqual(expect.arrayContaining(["это", "eto"]));
     expect(texts(ten!, "ja")).toEqual(expect.arrayContaining(["これ", "kore"]));
+    expect(texts(ten!, "zh")).toEqual(expect.arrayContaining(["这", "zhè"]));
     expect(isCorrectAnswer("eto", expectedFor(ten!, "ru"), acceptedFor(ten!, "ru"), "ru")).toBe(true);
     expect(isCorrectAnswer("kore", expectedFor(ten!, "ja"), acceptedFor(ten!, "ja"), "ja")).toBe(true);
+    expect(isCorrectAnswer("这", expectedFor(ten!, "zh"), acceptedFor(ten!, "zh"), "zh")).toBe(true);
+    expect(isCorrectAnswer("zhe", expectedFor(ten!, "zh"), acceptedFor(ten!, "zh"), "zh")).toBe(true);
     expect(isCorrectAnswer("это", expectedFor(ten!, "ru"), acceptedFor(ten!, "ru"), "ru")).toBe(true);
 
     const german = entriesForPair(dataset.entries, "en", "de");
     const article = german.find((entry) => texts(entry, "de").includes("der"));
     expect(article?.forms.ru).toBeUndefined();
     expect(article?.forms.ja).toBeUndefined();
+    expect(article?.forms.zh).toBeUndefined();
     expect(texts(article!, "es")).toEqual(expect.arrayContaining(["el", "la"]));
     expect(texts(article!, "nl")).toEqual(expect.arrayContaining(["de", "het"]));
   });
@@ -349,6 +353,7 @@ describe("bundled multilingual deck", () => {
   it("has a shared deck for pairs that are not on a frequency list", () => {
     expect(entriesForPair(dataset.entries, "es", "fr").length).toBeGreaterThan(400);
     expect(entriesForPair(dataset.entries, "en", "ja").length).toBeGreaterThan(400);
+    expect(entriesForPair(dataset.entries, "en", "zh").length).toBeGreaterThan(400);
   });
 
   it("accepts any English synonym listed on a card", () => {

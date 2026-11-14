@@ -23,6 +23,28 @@ CACHE = ROOT / "scripts" / "cache" / "wiki-forms.json"
 BASE_LANGS = {"en", "pl", "de"}
 
 ROMANIZATION = "romanization"
+
+PINYIN = "pinyin"
+
+
+def c(*triples: tuple[str, str, str]) -> list[dict]:
+    """Simplified Chinese form plus tone-marked pinyin (context on Hanzi + accepted)."""
+    out: list[dict] = []
+    for native, pinyin, context in triples:
+        row = {"text": native}
+        # Prefer pinyin on the card; append a short sense when present.
+        if pinyin and context:
+            row["context"] = f"{pinyin} · {context}"
+        elif pinyin:
+            row["context"] = pinyin
+        elif context:
+            row["context"] = context
+        out.append(row)
+        if pinyin:
+            out.append({"text": pinyin, "context": PINYIN})
+    return out
+
+
 RU_STRESS = {"\u0301", "\u0300"}
 RU_MAP = {
     "а": "a",
@@ -109,6 +131,11 @@ BE = L(
         ("いる", "iru", "animate existence"),
         ("ある", "aru", "inanimate existence"),
     ),
+    zh=c(
+        ("是", "shì", "copula"),
+        ("在", "zài", "location / progressive"),
+        ("有", "yǒu", "existence"),
+    ),
 )
 HAVE = L(
     es=rows(("tener", "possession"), ("haber", "auxiliary")),
@@ -118,6 +145,9 @@ HAVE = L(
     nl=rows("hebben"),
     ru=rows("иметь"),
     ja=j(("持つ", "motsu", "hold / have"), ("ある", "aru", "possession")),
+    zh=c(
+        ("有", "yǒu", "have / there is"),
+    ),
 )
 AND = L(
     es=rows(("y", "basic"), ("e", "before i-")),
@@ -127,6 +157,10 @@ AND = L(
     nl=rows("en"),
     ru=rows("и"),
     ja=j(("と", "to", "and")),
+    zh=c(
+        ("和", "hé", "and"),
+        ("跟", "gēn", "and / with"),
+    ),
 )
 OR = L(
     es=rows(("o", "basic"), ("u", "before o-")),
@@ -136,6 +170,10 @@ OR = L(
     nl=rows("of"),
     ru=rows("или"),
     ja=j(("または", "matawa", ""), ("か", "ka", "or")),
+    zh=c(
+        ("或者", "huòzhě", "or"),
+        ("还是", "háishì", "or, in questions"),
+    ),
 )
 NOT = L(
     es=rows(("no", "not / no")),
@@ -145,6 +183,11 @@ NOT = L(
     nl=rows(("niet", "not"), ("nee", "no")),
     ru=rows(("не", "not"), ("нет", "no")),
     ja=j(("ない", "nai", "not"), ("いいえ", "iie", "no")),
+    zh=c(
+        ("不", "bù", "not"),
+        ("没", "méi", "not, with 有"),
+        ("不是", "bú shì", "is not"),
+    ),
 )
 THIS = L(
     es=rows(
@@ -161,6 +204,12 @@ THIS = L(
     nl=rows(("deze", "this, common"), ("dit", "this, neuter"), ("die", "that, common"), ("dat", "that, neuter")),
     ru=rows(("этот", "masculine this"), ("эта", "feminine this"), ("это", "neuter this"), ("тот", "masculine that"), ("та", "feminine that"), ("то", "neuter that")),
     ja=j(("この", "kono", "this + noun"), ("これ", "kore", "this"), ("その", "sono", "that + noun"), ("それ", "sore", "that"), ("あの", "ano", "that over there + noun"), ("あれ", "are", "that over there")),
+    zh=c(
+        ("这", "zhè", "this"),
+        ("这个", "zhège", "this one"),
+        ("那", "nà", "that"),
+        ("那个", "nàge", "that one"),
+    ),
 )
 THAT_FAR = L(
     es=rows(("ese", "masculine"), ("esa", "feminine"), ("eso", "neuter"), ("aquel", "far, masculine"), ("aquella", "far, feminine")),
@@ -170,6 +219,10 @@ THAT_FAR = L(
     nl=rows(("die", "common"), ("dat", "neuter")),
     ru=rows(("тот", "masculine"), ("та", "feminine"), ("то", "neuter")),
     ja=j(("あの", "ano", "that + noun"), ("あれ", "are", "that")),
+    zh=c(
+        ("那", "nà", "that"),
+        ("那个", "nàge", "that one"),
+    ),
 )
 THE = L(
     es=rows(("el", "masculine"), ("la", "feminine"), ("lo", "neuter")),
@@ -179,6 +232,7 @@ THE = L(
     nl=rows(("de", "common"), ("het", "neuter")),
     ru=GAP,
     ja=GAP,
+    zh=GAP,
 )
 A = L(
     es=rows(("un", "masculine"), ("una", "feminine")),
@@ -188,6 +242,7 @@ A = L(
     nl=rows("een"),
     ru=GAP,
     ja=GAP,
+    zh=GAP,
 )
 IN = L(
     es=rows("en"),
@@ -197,6 +252,10 @@ IN = L(
     nl=rows(("in", "in"), ("op", "on"), ("bij", "at")),
     ru=rows(("в", "in / at"), ("на", "on / at")),
     ja=j(("に", "ni", "at / in"), ("で", "de", "at the place of an action")),
+    zh=c(
+        ("在", "zài", "at / in"),
+        ("里", "lǐ", "inside"),
+    ),
 )
 FROM = L(
     es=rows(("de", "from / of"), ("con", "with")),
@@ -206,6 +265,11 @@ FROM = L(
     nl=rows(("van", "from / of"), ("met", "with"), ("uit", "out of")),
     ru=rows(("из", "from / out of"), ("от", "from"), ("с", "with / from")),
     ja=j(("から", "kara", "from"), ("と", "to", "with"), ("の", "no", "of")),
+    zh=c(
+        ("从", "cóng", "from"),
+        ("和", "hé", "with"),
+        ("的", "de", "of"),
+    ),
 )
 I = L(
     es=rows("yo"),
@@ -215,6 +279,9 @@ I = L(
     nl=rows("ik"),
     ru=rows("я"),
     ja=j(("私", "watashi", "I"), ("僕", "boku", "I, often masculine")),
+    zh=c(
+        ("我", "wǒ", "I"),
+    ),
 )
 YOU = L(
     es=rows(("tú", "informal"), ("usted", "formal")),
@@ -224,6 +291,10 @@ YOU = L(
     nl=rows(("jij", "informal"), ("je", "unstressed"), ("u", "formal")),
     ru=rows(("ты", "informal"), ("вы", "formal")),
     ja=j(("あなた", "anata", "you"), ("君", "kimi", "informal")),
+    zh=c(
+        ("你", "nǐ", "you"),
+        ("您", "nín", "formal you"),
+    ),
 )
 YOU_PL = L(
     es=rows(("vosotros", "informal masculine, Spain"), ("vosotras", "informal feminine, Spain"), ("ustedes", "plural")),
@@ -233,6 +304,9 @@ YOU_PL = L(
     nl=rows("jullie"),
     ru=rows("вы"),
     ja=j(("あなたたち", "anatatachi", "you plural")),
+    zh=c(
+        ("你们", "nǐmen", "you plural"),
+    ),
 )
 HE = L(
     es=rows(("él", "he"), ("ello", "it")),
@@ -242,6 +316,10 @@ HE = L(
     nl=rows("hij"),
     ru=rows("он"),
     ja=j(("彼", "kare", "he")),
+    zh=c(
+        ("他", "tā", "he"),
+        ("它", "tā", "it"),
+    ),
 )
 WE = L(
     es=rows(("nosotros", "masculine / mixed"), ("nosotras", "feminine")),
@@ -251,6 +329,9 @@ WE = L(
     nl=rows(("wij", "stressed"), ("we", "unstressed")),
     ru=rows("мы"),
     ja=j(("私たち", "watashitachi", "we")),
+    zh=c(
+        ("我们", "wǒmen", "we"),
+    ),
 )
 WHAT = L(
     es=rows("qué"),
@@ -260,6 +341,9 @@ WHAT = L(
     nl=rows("wat"),
     ru=rows("что", ("shto", "romanization")),
     ja=j(("何", "nani", "what")),
+    zh=c(
+        ("什么", "shénme", "what"),
+    ),
 )
 WHO = L(
     es=rows("quién"),
@@ -269,6 +353,9 @@ WHO = L(
     nl=rows("wie"),
     ru=rows("кто"),
     ja=j(("誰", "dare", "who")),
+    zh=c(
+        ("谁", "shéi", "who"),
+    ),
 )
 WHICH = L(
     es=rows(("que", "that / which"), ("cual", "which"), ("quien", "who")),
@@ -278,6 +365,11 @@ WHICH = L(
     nl=rows(("die", "who / which, common"), ("dat", "which, neuter"), ("welk", "which")),
     ru=rows(("который", "masculine"), ("которая", "feminine"), ("которое", "neuter")),
     ja=j(("どの", "dono", "which + noun"), ("どれ", "dore", "which")),
+    zh=c(
+        ("哪", "nǎ", "which"),
+        ("哪个", "nǎge", "which one"),
+        ("的", "de", "that / which"),
+    ),
 )
 THAT_COMP = L(
     es=rows("que"),
@@ -287,6 +379,10 @@ THAT_COMP = L(
     nl=rows("dat"),
     ru=rows("что", ("shto", "romanization")),
     ja=j(("と", "to", "that, quotation"), ("こと", "koto", "that, nominalizer")),
+    zh=c(
+        ("那", "nà", "that"),
+        ("的", "de", "complementizer"),
+    ),
 )
 IF = L(
     es=rows("si"),
@@ -296,6 +392,10 @@ IF = L(
     nl=rows("als"),
     ru=rows("если"),
     ja=j(("もし", "moshi", "if"), ("なら", "nara", "if / given that")),
+    zh=c(
+        ("如果", "rúguǒ", "if"),
+        ("要是", "yàoshi", "if"),
+    ),
 )
 HERE = L(
     es=rows("aquí"),
@@ -305,6 +405,10 @@ HERE = L(
     nl=rows("hier"),
     ru=rows(("здесь", "here"), ("тут", "here")),
     ja=j(("ここ", "koko", "here")),
+    zh=c(
+        ("这里", "zhèlǐ", "here"),
+        ("这儿", "zhèr", "here"),
+    ),
 )
 TODAY = L(
     es=rows("hoy"),
@@ -314,6 +418,9 @@ TODAY = L(
     nl=rows("vandaag"),
     ru=rows("сегодня"),
     ja=j(("今日", "kyō", "")),
+    zh=c(
+        ("今天", "jīntiān", "today"),
+    ),
 )
 AGAIN = L(
     es=rows(("otra vez", "again"), ("de nuevo", "again")),
@@ -323,6 +430,10 @@ AGAIN = L(
     nl=rows(("weer", "again"), ("opnieuw", "again")),
     ru=rows(("снова", "again"), ("опять", "again")),
     ja=j(("また", "mata", "again"), ("再び", "futatabi", "again")),
+    zh=c(
+        ("又", "yòu", "again"),
+        ("再", "zài", "again / once more"),
+    ),
 )
 ALSO = L(
     es=rows("también"),
@@ -332,6 +443,10 @@ ALSO = L(
     nl=rows("ook"),
     ru=rows(("тоже", "also"), ("также", "also")),
     ja=j(("も", "mo", "also")),
+    zh=c(
+        ("也", "yě", "also"),
+        ("还", "hái", "also / still"),
+    ),
 )
 ONE = L(
     es=rows(("uno", "one"), ("una", "feminine"), ("un", "before a noun")),
@@ -341,6 +456,10 @@ ONE = L(
     nl=rows("een"),
     ru=rows(("один", "masculine"), ("одна", "feminine"), ("одно", "neuter")),
     ja=j(("一", "ichi", "one"), ("ひとつ", "hitotsu", "one, general counter")),
+    zh=c(
+        ("一", "yī", "one"),
+        ("一个", "yí ge", "one, general"),
+    ),
 )
 TWO = L(
     es=rows("dos"),
@@ -350,6 +469,10 @@ TWO = L(
     nl=rows("twee"),
     ru=rows(("два", "masculine / neuter"), ("две", "feminine")),
     ja=j(("二", "ni", "two"), ("ふたつ", "futatsu", "two, general counter")),
+    zh=c(
+        ("二", "èr", "two"),
+        ("两", "liǎng", "two, before a measure"),
+    ),
 )
 MY = L(
     es=rows(("mi", "my"), ("mío", "mine, masculine")),
@@ -359,6 +482,9 @@ MY = L(
     nl=rows("mijn"),
     ru=rows(("мой", "masculine"), ("моя", "feminine"), ("моё", "neuter")),
     ja=j(("私の", "watashi no", "my")),
+    zh=c(
+        ("我的", "wǒ de", "my"),
+    ),
 )
 YOUR = L(
     es=rows(("tu", "your"), ("tuyo", "yours, masculine")),
@@ -368,6 +494,9 @@ YOUR = L(
     nl=rows(("jouw", "informal"), ("uw", "formal")),
     ru=rows(("твой", "masculine"), ("твоя", "feminine"), ("твоё", "neuter")),
     ja=j(("あなたの", "anata no", "your")),
+    zh=c(
+        ("你的", "nǐ de", "your"),
+    ),
 )
 OUR = L(
     es=rows(("nuestro", "masculine"), ("nuestra", "feminine")),
@@ -377,6 +506,9 @@ OUR = L(
     nl=rows(("ons", "neuter"), ("onze", "common")),
     ru=rows(("наш", "masculine"), ("наша", "feminine"), ("наше", "neuter")),
     ja=j(("私たちの", "watashitachi no", "our")),
+    zh=c(
+        ("我们的", "wǒmen de", "our"),
+    ),
 )
 OWN = L(
     es=rows(("su", "one's"), ("suyo", "one's own")),
@@ -386,6 +518,9 @@ OWN = L(
     nl=rows(("zijn", "his / one's"), ("haar", "her")),
     ru=rows(("свой", "masculine"), ("своя", "feminine"), ("своё", "neuter")),
     ja=j(("自分の", "jibun no", "one's own")),
+    zh=c(
+        ("自己的", "zìjǐ de", "one's own"),
+    ),
 )
 ALL = L(
     es=rows(("todo", "masculine"), ("toda", "feminine"), ("todos", "plural")),
@@ -395,6 +530,10 @@ ALL = L(
     nl=rows(("al", "all"), ("alle", "all")),
     ru=rows(("весь", "masculine"), ("вся", "feminine"), ("всё", "neuter"), ("все", "plural")),
     ja=j(("全て", "subete", "all"), ("皆", "mina", "everyone")),
+    zh=c(
+        ("都", "dōu", "all"),
+        ("全部", "quánbù", "all / entire"),
+    ),
 )
 EACH = L(
     es=rows(("cada", "each / every"), ("todos", "every")),
@@ -404,6 +543,10 @@ EACH = L(
     nl=rows(("elk", "each"), ("ieder", "every")),
     ru=rows(("каждый", "masculine"), ("каждая", "feminine"), ("каждое", "neuter")),
     ja=j(("毎", "mai", "every"), ("それぞれ", "sorezore", "each")),
+    zh=c(
+        ("每", "měi", "each / every"),
+        ("每个", "měi ge", "each one"),
+    ),
 )
 SUCH = L(
     es=rows(("tal", "such"), ("así", "like this")),
@@ -413,6 +556,10 @@ SUCH = L(
     nl=rows(("zulke", "such"), ("zo'n", "such a")),
     ru=rows(("такой", "masculine"), ("такая", "feminine"), ("такое", "neuter")),
     ja=j(("そのような", "sonoyouna", "such"), ("こんな", "konna", "like this")),
+    zh=c(
+        ("这样", "zhèyàng", "such / like this"),
+        ("那样", "nàyàng", "like that"),
+    ),
 )
 SOME = L(
     es=rows(("algún", "masculine"), ("alguna", "feminine"), ("algo", "something")),
@@ -422,6 +569,10 @@ SOME = L(
     nl=rows(("een of ander", "some"), ("wat", "some")),
     ru=rows(("какой-то", "some"), ("какой-нибудь", "some / any")),
     ja=j(("何か", "nanika", "something"), ("ある", "aru", "a certain")),
+    zh=c(
+        ("一些", "yìxiē", "some"),
+        ("某个", "mǒu ge", "a certain"),
+    ),
 )
 NONE = L(
     es=rows(("ningún", "masculine"), ("ninguna", "feminine"), ("ninguno", "none")),
@@ -431,6 +582,10 @@ NONE = L(
     nl=rows("geen"),
     ru=rows(("никакой", "no / none"), ("никто", "nobody")),
     ja=j(("何も", "nanimo", "nothing, with a negative"), ("誰も", "daremo", "nobody, with a negative")),
+    zh=c(
+        ("没有", "méiyǒu", "none / not have"),
+        ("不", "bù", "not"),
+    ),
 )
 REFLEX = L(
     es=rows("se"),
@@ -440,6 +595,9 @@ REFLEX = L(
     nl=rows("zich"),
     ru=rows(("ся", "verb suffix")),
     ja=j(("自分", "jibun", "oneself")),
+    zh=c(
+        ("自己", "zìjǐ", "oneself"),
+    ),
 )
 BUT = L(
     es=rows("pero"),
@@ -449,6 +607,10 @@ BUT = L(
     nl=rows("maar"),
     ru=rows("но"),
     ja=j(("でも", "demo", "but"), ("しかし", "shikashi", "however")),
+    zh=c(
+        ("但是", "dànshì", "but"),
+        ("可是", "kěshì", "but"),
+    ),
 )
 ALTHOUGH = L(
     es=rows("aunque"),
@@ -458,6 +620,9 @@ ALTHOUGH = L(
     nl=rows("hoewel"),
     ru=rows("хотя"),
     ja=j(("けれども", "keredomo", "although"), ("のに", "noni", "although / despite")),
+    zh=c(
+        ("虽然", "suīrán", "although"),
+    ),
 )
 OTHER = L(
     es=rows(("otro", "masculine"), ("otra", "feminine")),
@@ -467,6 +632,10 @@ OTHER = L(
     nl=rows(("ander", "neuter"), ("andere", "common")),
     ru=rows(("другой", "masculine"), ("другая", "feminine"), ("другое", "neuter")),
     ja=j(("他", "hoka", "other"), ("別", "betsu", "another")),
+    zh=c(
+        ("别的", "bié de", "other"),
+        ("其他", "qítā", "other"),
+    ),
 )
 BECOME = L(
     es=rows(("convertirse", "become"), ("volverse", "become")),
@@ -476,6 +645,10 @@ BECOME = L(
     nl=rows(("worden", "become"), ("zullen", "will, auxiliary")),
     ru=rows("стать"),
     ja=j(("なる", "naru", "become")),
+    zh=c(
+        ("成为", "chéngwéi", "become"),
+        ("变成", "biànchéng", "become"),
+    ),
 )
 SHE_THEY = L(
     es=rows(("ella", "she"), ("ellas", "they, feminine"), ("ellos", "they, masculine / mixed")),
@@ -485,6 +658,11 @@ SHE_THEY = L(
     nl=rows(("zij", "she / they"), ("ze", "unstressed")),
     ru=rows(("она", "she"), ("они", "they")),
     ja=j(("彼女", "kanojo", "she"), ("彼ら", "karera", "they")),
+    zh=c(
+        ("她", "tā", "she"),
+        ("他们", "tāmen", "they"),
+        ("她们", "tāmen", "they, feminine"),
+    ),
 )
 IT = L(
     es=rows(("ello", "it"), ("lo", "it, object")),
@@ -494,6 +672,10 @@ IT = L(
     nl=rows("het"),
     ru=rows(("это", "it / this"), ("оно", "it, neuter")),
     ja=j(("それ", "sore", "it / that")),
+    zh=c(
+        ("它", "tā", "it"),
+        ("这", "zhè", "this / it"),
+    ),
 )
 HER_THEIR = L(
     es=rows(("su", "her / their"), ("ella", "she / her"), ("ustedes", "you plural")),
@@ -503,6 +685,10 @@ HER_THEIR = L(
     nl=rows(("haar", "her"), ("hun", "their"), ("jullie", "you plural")),
     ru=rows(("её", "her"), ("их", "their"), ("вы", "you plural")),
     ja=j(("彼女の", "kanojo no", "her"), ("彼らの", "karera no", "their")),
+    zh=c(
+        ("她的", "tā de", "her"),
+        ("他们的", "tāmen de", "their"),
+    ),
 )
 WHAT_KIND = L(
     es=rows(("qué", "what"), ("cuál", "which")),
@@ -512,6 +698,10 @@ WHAT_KIND = L(
     nl=rows(("wat voor", "what kind of"), ("welk", "which")),
     ru=rows(("какой", "masculine"), ("какая", "feminine"), ("какое", "neuter")),
     ja=j(("どんな", "donna", "what kind")),
+    zh=c(
+        ("什么", "shénme", "what"),
+        ("什么样", "shénme yàng", "what kind"),
+    ),
 )
 NO_ANY = L(
     es=rows(("ningún", "masculine"), ("ninguna", "feminine")),
@@ -521,6 +711,10 @@ NO_ANY = L(
     nl=rows("geen"),
     ru=rows(("никакой", "no"), ("нет", "there is no")),
     ja=j(("ない", "nai", "not / there is no")),
+    zh=c(
+        ("没有", "méiyǒu", "no / not any"),
+        ("不", "bù", "not"),
+    ),
 )
 THIS_NEAR = L(
     es=rows(("este", "masculine"), ("esta", "feminine"), ("esto", "neuter"), ("estos", "masculine plural"), ("estas", "feminine plural")),
@@ -530,6 +724,11 @@ THIS_NEAR = L(
     nl=rows(("deze", "common"), ("dit", "neuter")),
     ru=rows(("этот", "masculine"), ("эта", "feminine"), ("это", "neuter"), ("эти", "plural")),
     ja=j(("この", "kono", "this + noun"), ("これ", "kore", "this")),
+    zh=c(
+        ("这", "zhè", "this"),
+        ("这个", "zhège", "this one"),
+        ("这些", "zhèxiē", "these"),
+    ),
 )
 
 BY_PL: dict[str, dict[str, list]] = {
@@ -711,7 +910,7 @@ def to_form(pairs: list | None, code: str) -> dict | None:
     accepted = accepted[:16]
     if not accepted:
         return None
-    shown = [item["text"] for item in accepted if item.get("context") != ROMANIZATION]
+    shown = [item["text"] for item in accepted if item.get("context") not in {ROMANIZATION, PINYIN}]
     if not shown:
         shown = [accepted[0]["text"]]
     return {"text": " / ".join(shown[:8]), "accepted": accepted}

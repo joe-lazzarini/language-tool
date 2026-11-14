@@ -4,6 +4,7 @@ import { SpecialKeys } from "../components/SpecialKeys";
 import type { WordStat } from "../accuracy/stats";
 import { knownIdSet } from "../accuracy/stats";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "../lib/advanceKey";
+import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "../lib/ime";
 import {
   answerPlaceholder,
   languageByCode,
@@ -133,6 +134,7 @@ export function SentenceQuiz({
   const inputRef = useRef<HTMLInputElement>(null);
   const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
   const nextRef = useRef<() => void>(() => {});
+  const composingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +215,7 @@ export function SentenceQuiz({
   }
 
   function check(given = input) {
-    if (!sentence || revealed) return;
+    if (!sentence || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
     const ok = isCorrectSentence(given, sentence.accepted, to);
     setCorrect(ok);
     setRevealed(true);
@@ -244,12 +246,13 @@ export function SentenceQuiz({
     if (phase !== "round" || done) return;
 
     function onKeyDown(event: KeyboardEvent) {
+      const composing = isComposingKeyEvent(event) || composingRef.current;
       const kind = keyTargetKind(event.target);
       const result = applyAdvanceKey(heldKeys.current, {
         key: event.key,
         repeat: event.repeat,
         revealed,
-        composing: event.isComposing || event.keyCode === 229,
+        composing,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
         metaKey: event.metaKey,
@@ -274,6 +277,7 @@ export function SentenceQuiz({
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (shouldBlockGradeOrAdvance(composingRef.current)) return;
     if (!revealed) {
       if (!input.trim()) return;
       check();
@@ -376,6 +380,17 @@ export function SentenceQuiz({
             ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              requestAnimationFrame(() => {
+                composingRef.current = false;
+              });
+            }}
+            onKeyDown={(event) => {
+              if (isComposingKeyEvent(event)) composingRef.current = true;
+            }}
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"

@@ -1,0 +1,112 @@
+{
+  "frames": {
+    "vi": "{subject}{verb}。",
+    "vt": "{subject}{verb}{object}。",
+    "adj": "{subject}很{adj}。"
+  },
+  "nouns": {
+    "house": {
+      "npNom": "房子",
+      "npAcc": "房子",
+      "gender": "n"
+    },
+    "dog": {
+      "npNom": "狗",
+      "npAcc": "狗",
+      "gender": "m"
+    },
+    "child": {
+      "npNom": "孩子",
+      "npAcc": "孩子",
+      "gender": "n"
+    },
+    "book": {
+      "npNom": "书",
+      "npAcc": "书",
+      "gender": "n"
+    },
+    "water": {
+      "npNom": "水",
+      "npAcc": "水",
+      "gender": "n"
+    },
+    "school": {
+      "npNom": "学校",
+      "npAcc": "学校",
+      "gender": "n"
+    },
+    "car": {
+      "npNom": "车",
+      "npAcc": "车",
+      "gender": "n"
+    },
+    "city": {
+      "npNom": "城市",
+      "npAcc": "城市",
+      "gender": "n"
+    },
+    "cat": {
+      "npNom": "猫",
+      "npAcc": "猫",
+      "gender": "m"
+    },
+    "bread": {
+      "npNom": "面包",
+      "npAcc": "面包",
+      "gender": "n"
+    },
+    "friend": {
+      "npNom": "朋友",
+      "npAcc": "朋友",
+      "gender": "m"
+    }
+  },
+  "verbs": {
+    "sleep": {
+      "form": "睡觉"
+    },
+    "work": {
+      "form": "工作"
+    },
+    "wait": {
+      "form": "等"
+    },
+    "read": {
+      "form": "读"
+    },
+    "see": {
+      "form": "看"
+    },
+    "eat": {
+      "form": "吃"
+    },
+    "drink": {
+      "form": "喝"
+    },
+    "write": {
+      "form": "写"
+    }
+  },
+  "adjectives": {
+    "big": {
+      "m": "大",
+      "f": "大",
+      "n": "大"
+    },
+    "small": {
+      "m": "小",
+      "f": "小",
+      "n": "小"
+    },
+    "new": {
+      "m": "新",
+      "f": "新",
+      "n": "新"
+    },
+    "good": {
+      "m": "好",
+      "f": "好",
+      "n": "好"
+    }
+  }
+}

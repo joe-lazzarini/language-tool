@@ -126,4 +126,16 @@ describe("advance key", () => {
       advance: false,
     });
   });
+
+  it("does not advance on Space while an IME is composing", () => {
+    const held = new Map<string, AdvanceKeyHold>();
+    expect(press(held, { key: " ", composing: true, revealed: true })).toEqual({
+      preventDefault: false,
+      advance: false,
+    });
+    expect(press(held, { key: " ", composing: true, typingTarget: true })).toEqual({
+      preventDefault: false,
+      advance: false,
+    });
+  });
 });

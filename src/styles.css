@@ -23,7 +23,27 @@
   --sentence-bg: #e4ebf8;
   --sentence-line: #243e73;
   --shadow: 0 18px 40px rgba(52, 32, 16, 0.12);
-  font-family: Outfit, "Segoe UI", sans-serif;
+  --font-sans:
+    Outfit,
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    sans-serif;
+  --font-display:
+    Fraunces,
+    Georgia,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    serif;
+  font-family: var(--font-sans);
   line-height: 1.45;
   font-weight: 400;
   color: var(--ink);
@@ -87,7 +107,7 @@ a {
 
 .hero h1,
 .prompt {
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-optical-sizing: auto;
   letter-spacing: -0.03em;
 }
@@ -356,7 +376,7 @@ a {
 
 .expected > span {
   display: block;
-  font-family: Outfit, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -379,7 +399,7 @@ a {
 }
 
 .accepted-list strong {
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.55rem;
   font-weight: 500;
 }
@@ -422,7 +442,7 @@ a {
   min-width: 42px;
   min-height: 42px;
   font-size: 1.15rem;
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .actions {
@@ -461,7 +481,7 @@ a {
 }
 
 .misses strong {
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.25rem;
 }
 
@@ -535,7 +555,7 @@ a {
 
 .mine-card-title {
   grid-area: title;
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.7rem;
   font-weight: 500;
   letter-spacing: -0.03em;
@@ -543,7 +563,7 @@ a {
 }
 
 .mine-pair {
-  font-family: Outfit, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -553,7 +573,7 @@ a {
 
 .mine-selected {
   margin-left: 8px;
-  font-family: Outfit, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -662,7 +682,7 @@ a {
 
 .sentence-card-title {
   margin: 0;
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.7rem;
   font-weight: 500;
   letter-spacing: -0.03em;
@@ -730,7 +750,7 @@ a {
   flex-wrap: wrap;
   gap: 8px;
   margin: 0;
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.25rem;
 }
 
@@ -843,7 +863,7 @@ a {
 }
 
 .word-main strong {
-  font-family: Fraunces, Georgia, serif;
+  font-family: var(--font-display);
   font-size: 1.45rem;
   font-weight: 500;
 }

@@ -84,6 +84,19 @@ describe("isCorrectAnswer", () => {
     expect(isCorrectAnswer("café", "café", [], "fr")).toBe(true);
   });
 
+  it("accepts Simplified Chinese Hanzi and pinyin with or without tones", () => {
+    const accepted = [
+      { text: "你好", context: "nǐ hǎo" },
+      { text: "nǐ hǎo", context: "pinyin" },
+    ];
+    expect(isCorrectAnswer("你好", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("nǐ hǎo", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("ni3 hao3", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("nihao", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("Ni Hao", "你好", accepted, "zh")).toBe(true);
+    expect(isCorrectAnswer("您好", "你好", accepted, "zh")).toBe(false);
+  });
+
   it("strips a leading to only for English answers", () => {
     expect(isCorrectAnswer("want", "to want", [], "en")).toBe(true);
     expect(isCorrectAnswer("to być", "być", [], "pl")).toBe(false);

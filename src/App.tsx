@@ -35,6 +35,7 @@ import {
 import { focusHint, selectCards, weakCount } from "./accuracy/stats";
 import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
+import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "./lib/ime";
 import { isCorrectAnswer } from "./lib/match";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
@@ -359,6 +360,7 @@ export function Session({
   const inputRef = useRef<HTMLInputElement>(null);
   const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
   const nextRef = useRef<() => void>(() => {});
+  const composingRef = useRef(false);
 
   const word = words[index];
   const total = words.length;
@@ -392,7 +394,7 @@ export function Session({
   }
 
   function check(given = input) {
-    if (!word || revealed) return;
+    if (!word || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
     const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     setCorrect(ok);
     setRevealed(true);
@@ -427,12 +429,13 @@ export function Session({
     if (done) return;
 
     function onKeyDown(event: KeyboardEvent) {
+      const composing = isComposingKeyEvent(event) || composingRef.current;
       const kind = keyTargetKind(event.target);
       const result = applyAdvanceKey(heldKeys.current, {
         key: event.key,
         repeat: event.repeat,
         revealed,
-        composing: event.isComposing || event.keyCode === 229,
+        composing,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
         metaKey: event.metaKey,
@@ -457,6 +460,7 @@ export function Session({
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (shouldBlockGradeOrAdvance(composingRef.current)) return;
     if (!revealed) {
       if (!input.trim()) return;
       check();
@@ -553,6 +557,18 @@ export function Session({
           ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            // CompositionEnd can fire before the Enter that committed the IME.
+            requestAnimationFrame(() => {
+              composingRef.current = false;
+            });
+          }}
+          onKeyDown={(event) => {
+            if (isComposingKeyEvent(event)) composingRef.current = true;
+          }}
           autoCapitalize="off"
           autoCorrect="off"
           autoComplete="off"

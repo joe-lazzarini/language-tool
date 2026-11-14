@@ -174,6 +174,23 @@ export const LANGUAGES = [
     pivot: false,
     answerHint: "Japanese script or romaji. Macrons are optional (kyō = kyo). Use your keyboard for kana.",
   },
+  {
+    code: "zh",
+    name: "Chinese",
+    nativeName: "中文",
+    wiktionary: "Chinese",
+    wiktionaryAliases: ["Mandarin", "Mandarin Chinese"],
+    flag: "🇨🇳",
+    locale: "zh-CN",
+    specialLetters: [],
+    optionalPrefixes: [],
+    diacritics: "strip-latin",
+    foldChars: [],
+    capitalizeLookup: false,
+    pivot: false,
+    answerHint:
+      "Simplified Chinese characters or pinyin. Tone marks and tone numbers are optional (nǐ = ni3 = ni). Spaces are optional.",
+  },
 ] as const;
 
 export type LanguageInfo = (typeof LANGUAGES)[number];

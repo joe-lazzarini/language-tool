@@ -31,4 +31,11 @@ describe("isCorrectSentence", () => {
     expect(isCorrectSentence("Ребёнок пьёт воду.", russian, "ru")).toBe(true);
     expect(foldSentence("L’eau est petite.", "fr")).toBe(foldSentence("l'eau est petite", "fr"));
   });
+
+  it("folds Chinese spacing and the full stop", () => {
+    const chinese = ["猫睡觉。", "猫睡觉"];
+    expect(isCorrectSentence("猫睡觉", chinese, "zh")).toBe(true);
+    expect(isCorrectSentence("猫 睡觉。", chinese, "zh")).toBe(true);
+    expect(isCorrectSentence("狗睡觉", chinese, "zh")).toBe(false);
+  });
 });
