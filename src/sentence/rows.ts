@@ -56,10 +56,12 @@ export function sentenceRows(
   const rows: SentenceWordRow[] = [];
 
   for (const entry of candidates) {
-    const display = displaySlot(entry, grammar, promptLang, answerLang);
-    if (!display) continue;
     const prompt = sideState(promptStats, entry.id);
     const answer = sideState(answerStats, entry.id);
+    // Lobby lists words you have practiced or added — not the entire deck.
+    if (!entry.custom && !prompt.known && !answer.known) continue;
+    const display = displaySlot(entry, grammar, promptLang, answerLang);
+    if (!display) continue;
     rows.push({
       id: entry.id,
       pos: display.pos,
