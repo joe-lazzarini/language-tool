@@ -1,184 +1,250 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { knownIdSet, recordAttempt, withManual, type WordStat } from "../accuracy/stats";
+import { recordAttempt, withManual, type WordStat } from "../accuracy/stats";
 import { LANG_CODES, type LangCode } from "../lib/languages";
-import { generateSentences, lexiconKnownCount } from "./generate";
-import { sentenceRows } from "./rows";
-import type { Lexicon, SentencePack } from "./types";
+import type { Entry } from "../types";
+import { generateSentences, MIN_READY_SENTENCES, sampleSentences, unlockHint } from "./generate";
+import { buildVocabIndex } from "./vocab";
+import type { GrammarFile, SentencePack } from "./types";
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;
 }
 
-const lexicon = loadJson<Lexicon>("../../public/data/sentences/index.json");
+const grammar = loadJson<GrammarFile>("../../public/data/sentences/grammar.json");
 const packs = Object.fromEntries(
   LANG_CODES.map((code) => [code, loadJson<SentencePack>(`../../public/data/sentences/${code}.json`)]),
 ) as Record<LangCode, SentencePack>;
 
-const everyId = new Set<string>([
-  ...lexicon.nouns.map((item) => item.id),
-  ...lexicon.verbs.map((item) => item.id),
-  ...lexicon.adjectives.map((item) => item.id),
-]);
-
-function allKnown(prompt: LangCode, answer: LangCode) {
-  return generateSentences(lexicon, prompt, packs[prompt], answer, packs[answer], everyId, everyId);
+function knownStat(manual = false): WordStat {
+  if (manual) return withManual(undefined, true, 1)!;
+  let stat = recordAttempt(undefined, true, 1);
+  return recordAttempt(stat, true, 2);
 }
 
-function accepted(prompt: LangCode, answer: LangCode, id: string): string {
-  const sentence = allKnown(prompt, answer).find((item) => item.id === id);
-  expect(sentence, id).toBeTruthy();
-  return sentence!.accepted[0]!;
+function weakStat(): WordStat {
+  // Known requires two newest corrects; this has history but accuracy < 60%.
+  let stat = recordAttempt(undefined, false, 1);
+  stat = recordAttempt(stat, false, 2);
+  return recordAttempt(stat, true, 3);
 }
 
-const goldens: Record<string, Record<LangCode, string>> = {
-  "vi:cat:sleep": {
-    en: "The cat sleeps.",
-    pl: "Kot śpi.",
-    de: "Die Katze schläft.",
-    es: "El gato duerme.",
-    fr: "Le chat dort.",
-    it: "Il gatto dorme.",
-    pt: "O gato dorme.",
-    nl: "De kat slaapt.",
-    ru: "Кошка спит.",
-    ja: "猫は寝ます。",
-    zh: "猫睡觉。",
-  },
-  "vt:child:read:book": {
-    en: "The child reads the book.",
-    pl: "Dziecko czyta książkę.",
-    de: "Das Kind liest das Buch.",
-    es: "El niño lee el libro.",
-    fr: "L'enfant lit le livre.",
-    it: "Il bambino legge il libro.",
-    pt: "A criança lê o livro.",
-    nl: "Het kind leest het boek.",
-    ru: "Ребёнок читает книгу.",
-    ja: "子供は本を読みます。",
-    zh: "孩子读书。",
-  },
-  "adj:house:big": {
-    en: "The house is big.",
-    pl: "Dom jest duży.",
-    de: "Das Haus ist groß.",
-    es: "La casa es grande.",
-    fr: "La maison est grande.",
-    it: "La casa è grande.",
-    pt: "A casa é grande.",
-    nl: "Het huis is groot.",
-    ru: "Дом большой.",
-    ja: "家は大きいです。",
-    zh: "房子很大。",
-  },
-  "adj:water:small": {
-    en: "The water is small.",
-    pl: "Woda jest mała.",
-    de: "Das Wasser ist klein.",
-    es: "El agua es pequeña.",
-    fr: "L'eau est petite.",
-    it: "L'acqua è piccola.",
-    pt: "A água é pequena.",
-    nl: "Het water is klein.",
-    ru: "Вода маленькая.",
-    ja: "水は小さいです。",
-    zh: "水很小。",
-  },
-  "vt:dog:see:friend": {
-    en: "The dog sees the friend.",
-    pl: "Pies widzi przyjaciela.",
-    de: "Der Hund sieht den Freund.",
-    es: "El perro ve al amigo.",
-    fr: "Le chien voit l'ami.",
-    it: "Il cane vede l'amico.",
-    pt: "O cão vê o amigo.",
-    nl: "De hond ziet de vriend.",
-    ru: "Собака видит друга.",
-    ja: "犬は友達を見ます。",
-    zh: "狗看朋友。",
-  },
-};
+function form(text: string, context?: string) {
+  return { text, accepted: [{ text, ...(context ? { context } : {}) }] };
+}
 
-describe("sentence templates", () => {
-  it("gives every lexicon word a complete form in every language", () => {
+function entry(
+  id: string,
+  pos: string,
+  forms: Partial<Record<LangCode, ReturnType<typeof form>>>,
+  concept?: string,
+): Entry {
+  return { id, pos, ranks: {}, forms, concept };
+}
+
+/** Curated study cards mirroring former lexicon lemmas, keyed by deck ids. */
+function studyDeck(): Entry[] {
+  return [
+    entry("pl-103", "noun", {
+      en: form("house"),
+      pl: form("dom"),
+      de: form("Haus"),
+      zh: form("房子"),
+    }, "house"),
+    entry("de-757", "noun", {
+      en: form("dog"),
+      pl: form("pies"),
+      de: form("Hund"),
+      zh: form("狗"),
+    }, "dog"),
+    entry("de-150", "noun", {
+      en: form("child"),
+      pl: form("dziecko"),
+      de: form("Kind"),
+      zh: form("孩子"),
+    }, "child"),
+    entry("de-328", "noun", {
+      en: form("book"),
+      pl: form("książka"),
+      de: form("Buch"),
+      zh: form("书"),
+    }, "book"),
+    entry("de-417", "noun", {
+      en: form("water"),
+      pl: form("woda"),
+      de: form("Wasser"),
+      zh: form("水"),
+    }, "water"),
+    entry("de-530", "noun", {
+      en: form("friend"),
+      pl: form("przyjaciel"),
+      de: form("Freund"),
+      zh: form("朋友"),
+    }, "friend"),
+    entry("custom-cat", "noun", {
+      en: form("cat"),
+      pl: form("kot"),
+      de: form("Katze", "feminine"),
+      zh: form("猫"),
+    }, "cat"),
+    entry("pl-798", "verb", {
+      en: form("to sleep"),
+      pl: form("spać"),
+      de: form("schlafen"),
+      zh: form("睡觉"),
+    }, "sleep"),
+    entry("pl-334", "verb", {
+      en: form("to read"),
+      pl: form("czytać"),
+      de: form("lesen"),
+      zh: form("读"),
+    }, "read"),
+    entry("de-108", "verb", {
+      en: form("to see"),
+      pl: form("widzieć"),
+      de: form("sehen"),
+      zh: form("看"),
+    }, "see"),
+    entry("de-49", "adjective", {
+      en: form("big"),
+      pl: form("duży"),
+      de: form("groß"),
+      zh: form("大"),
+    }, "big"),
+    entry("pl-132", "adjective", {
+      en: form("small"),
+      pl: form("mały"),
+      de: form("klein"),
+      zh: form("小"),
+    }, "small"),
+  ];
+}
+
+function allKnownStats(ids: string[]): Map<string, WordStat> {
+  return new Map(ids.map((id) => [id, knownStat()]));
+}
+
+function generate(prompt: LangCode, answer: LangCode, entries: Entry[], stats: Map<string, WordStat>) {
+  const index = buildVocabIndex(entries, grammar, prompt, answer, stats, stats);
+  return generateSentences(index, prompt, packs[prompt], answer, packs[answer]);
+}
+
+describe("dynamic sentence generation", () => {
+  it("has no preset lexicon index file", () => {
+    expect(existsSync(new URL("../../public/data/sentences/index.json", import.meta.url))).toBe(false);
     for (const code of LANG_CODES) {
       const pack = packs[code];
-      for (const noun of lexicon.nouns) {
-        expect(pack.nouns[noun.id]?.npNom, `${code} ${noun.id}`).toBeTruthy();
-        expect(pack.nouns[noun.id]?.npAcc).toBeTruthy();
-        expect(["m", "f", "n"]).toContain(pack.nouns[noun.id]?.gender);
-      }
-      for (const verb of lexicon.verbs) expect(pack.verbs[verb.id]?.form, `${code} ${verb.id}`).toBeTruthy();
-      for (const adj of lexicon.adjectives) {
-        expect(pack.adjectives[adj.id]?.m, `${code} ${adj.id}`).toBeTruthy();
-        expect(pack.adjectives[adj.id]?.f).toBeTruthy();
-        expect(pack.adjectives[adj.id]?.n).toBeTruthy();
-      }
+      expect(pack.frames.vi).toBeTruthy();
+      expect(pack.frames.vt).toBeTruthy();
+      expect(pack.frames.adj).toBeTruthy();
+      expect((pack as { nouns?: unknown }).nouns).toBeUndefined();
     }
   });
 
-  it("renders the same number of grammatical sentences in every language", () => {
-    const counts = LANG_CODES.map((code) => allKnown(code, code).length);
-    expect(new Set(counts).size).toBe(1);
-    expect(counts[0]).toBeGreaterThan(20);
-    for (const code of LANG_CODES) {
-      for (const sentence of allKnown(code, code)) {
-        expect(sentence.prompt.includes("{")).toBe(false);
-        expect(sentence.accepted[0]?.includes("{")).toBe(false);
-        expect(sentence.prompt.endsWith(code === "ja" || code === "zh" ? "。" : ".")).toBe(true);
+  it("builds sentences only from known non-weak study words", () => {
+    const deck = studyDeck();
+    const ids = deck.map((item) => item.id);
+    const stats = allKnownStats(ids);
+    const sentences = generate("en", "pl", deck, stats);
+    expect(sentences.length).toBeGreaterThan(0);
+    for (const sentence of sentences) {
+      for (const id of sentence.wordIds) {
+        expect(ids).toContain(id);
       }
+    }
+
+    const withoutSleep = new Map(stats);
+    withoutSleep.delete("pl-798");
+    const hidden = generate("en", "pl", deck, withoutSleep);
+    expect(hidden.some((item) => item.wordIds.includes("pl-798"))).toBe(false);
+
+    const weakSleep = new Map(stats);
+    weakSleep.set("pl-798", weakStat());
+    const weakHidden = generate("en", "pl", deck, weakSleep);
+    expect(weakHidden.some((item) => item.wordIds.includes("pl-798"))).toBe(false);
+  });
+
+  it("includes a newly known custom word in generated sentences", () => {
+    const deck = studyDeck();
+    const ids = deck.map((item) => item.id);
+    const stats = allKnownStats(ids);
+    const sentences = generate("en", "pl", deck, stats);
+    expect(sentences.some((item) => item.wordIds.includes("custom-cat"))).toBe(true);
+    expect(sentences.some((item) => item.id.includes("custom-cat") && item.id.includes("pl-798"))).toBe(true);
+  });
+
+  it("varies rounds and avoids immediate repeats when possible", () => {
+    const deck = studyDeck();
+    const stats = allKnownStats(deck.map((item) => item.id));
+    const all = generate("en", "pl", deck, stats);
+    expect(all.length).toBeGreaterThanOrEqual(MIN_READY_SENTENCES);
+    let seed = 1;
+    const rng = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+    const first = sampleSentences(all, 8, rng);
+    const second = sampleSentences(all, 8, rng, new Set(first.map((item) => item.id)));
+    expect(first.map((item) => item.id).join("|")).not.toEqual(second.map((item) => item.id).join("|"));
+  });
+
+  it("unlocks at four distinct sentences and explains missing words", () => {
+    const house = entry("pl-103", "noun", { en: form("house"), pl: form("dom") }, "house");
+    const big = entry("de-49", "adjective", { en: form("big"), pl: form("duży") }, "big");
+    const sleep = entry("pl-798", "verb", { en: form("to sleep"), pl: form("spać") }, "sleep");
+    const dog = entry("de-757", "noun", { en: form("dog"), pl: form("pies") }, "dog");
+    const few = [house, big];
+    const fewStats = allKnownStats(["pl-103", "de-49"]);
+    const fewIndex = buildVocabIndex(few, grammar, "en", "pl", fewStats, fewStats);
+    const fewSentences = generateSentences(fewIndex, "en", packs.en, "pl", packs.pl);
+    expect(fewSentences.length).toBeLessThan(MIN_READY_SENTENCES);
+    expect(unlockHint(fewSentences.length, fewIndex).length).toBeGreaterThan(0);
+
+    const child = entry("de-150", "noun", { en: form("child"), pl: form("dziecko") }, "child");
+    const enough = [house, big, sleep, dog, child];
+    const enoughStats = allKnownStats(enough.map((item) => item.id));
+    const ready = generate("en", "pl", enough, enoughStats);
+    expect(ready.length).toBeGreaterThanOrEqual(MIN_READY_SENTENCES);
+  });
+
+  it("renders golden EN/PL/DE/ZH sentences from study ids", () => {
+    const deck = studyDeck();
+    const stats = allKnownStats(deck.map((item) => item.id));
+    const cases: Array<[LangCode, string, string]> = [
+      ["en", "vi:custom-cat:pl-798", "The cat sleeps."],
+      ["pl", "vi:custom-cat:pl-798", "Kot śpi."],
+      ["de", "vi:custom-cat:pl-798", "Die Katze schläft."],
+      ["zh", "vi:custom-cat:pl-798", "猫睡觉。"],
+      ["en", "adj:pl-103:de-49", "The house is big."],
+      ["pl", "adj:pl-103:de-49", "Dom jest duży."],
+      ["zh", "adj:pl-103:de-49", "房子很大。"],
+      ["en", "vt:de-150:pl-334:de-328", "The child reads the book."],
+      ["zh", "vt:de-150:pl-334:de-328", "孩子读书。"],
+    ];
+    for (const [lang, id, expected] of cases) {
+      const sentence = generate("en", lang, deck, stats).find((item) => item.id === id);
+      expect(sentence?.accepted[0], `${lang} ${id}`).toBe(expected);
     }
   });
 
-  it("matches the golden sentences for agreement, case, and articles", () => {
-    for (const [id, byLang] of Object.entries(goldens)) {
-      for (const code of LANG_CODES) {
-        expect(accepted("en", code, id), `${code} ${id}`).toBe(byLang[code]);
-      }
-      expect(allKnown("pl", "en").find((item) => item.id === id)?.prompt).toBe(byLang.pl);
-    }
+  it("covers Mandarin frames without articles or inflection", () => {
+    const deck = studyDeck();
+    const stats = allKnownStats(deck.map((item) => item.id));
+    const sentences = generate("zh", "en", deck, stats);
+    expect(sentences.length).toBeGreaterThan(0);
+    const sleep = sentences.find((item) => item.id === "vi:custom-cat:pl-798");
+    expect(sleep?.prompt).toBe("猫睡觉。");
+    expect(sleep?.accepted[0]).toBe("The cat sleeps.");
   });
 
-  it("accepts the Japanese plain form and keeps content words inside the restrictions", () => {
-    const sleep = allKnown("en", "ja").find((item) => item.id === "vi:cat:sleep");
-    expect(sleep?.accepted).toContain("猫は寝る。");
-    const house = allKnown("en", "ja").find((item) => item.id === "adj:house:big");
-    expect(house?.accepted).toContain("家は大きい。");
-    const sentences = allKnown("en", "pl");
-    expect(sentences.some((item) => item.wordIds.includes("cat") && item.wordIds.includes("work"))).toBe(false);
-    expect(sentences.some((item) => item.frame === "vt" && item.wordIds[0] === item.wordIds[2])).toBe(false);
-    expect(sentences.filter((item) => item.wordIds.includes("read")).every((item) => item.wordIds.includes("book"))).toBe(true);
-  });
-
-  it("drops a sentence when a content word is not known, including via a deck id", () => {
-    const withoutCat = new Set(everyId);
-    withoutCat.delete("cat");
-    const hidden = generateSentences(lexicon, "en", packs.en, "pl", packs.pl, withoutCat, withoutCat);
-    expect(hidden.some((item) => item.wordIds.includes("cat"))).toBe(false);
-
-    const deckOnly = new Set(["pl-103", "pl-67"]);
-    const house = generateSentences(lexicon, "en", packs.en, "pl", packs.pl, deckOnly, deckOnly);
-    expect(house.map((item) => item.id)).toEqual(["adj:house:big"]);
-    expect(lexiconKnownCount(lexicon, deckOnly)).toBe(2);
-  });
-
-  it("treats two correct quiz answers as knowing the deck id", () => {
-    let stat = recordAttempt(undefined, true, 1);
-    stat = recordAttempt(stat, true, 2);
-    const stats = new Map<string, WordStat>([["pl-103", stat]]);
-    const known = knownIdSet(stats);
-    const rows = sentenceRows(lexicon, packs.en, packs.pl, new Map(), stats);
-    expect(rows.find((row) => row.id === "house")).toMatchObject({ answerKnown: true, promptKnown: false });
-    expect(generateSentences(lexicon, "en", packs.en, "pl", packs.pl, known, known)).toHaveLength(0);
-
-    const both = new Map<string, WordStat>([
-      ["pl-103", stat],
-      ["de-49", withManual(undefined, true, 3)!],
-    ]);
-    expect(rows.find((row) => row.id === "cat")?.answerKnown).toBe(false);
-    const marked = knownIdSet(both);
-    expect(generateSentences(lexicon, "pl", packs.pl, "en", packs.en, marked, marked).map((item) => item.id)).toEqual([
-      "adj:house:big",
-    ]);
+  it("does not use words outside the study list even if grammar has them", () => {
+    const onlyHouse = [
+      entry("pl-103", "noun", { en: form("house"), pl: form("dom") }, "house"),
+      entry("de-49", "adjective", { en: form("big"), pl: form("duży") }, "big"),
+    ];
+    const stats = allKnownStats(["pl-103", "de-49", "pl-798", "de-757"]);
+    const sentences = generate("en", "pl", onlyHouse, stats);
+    expect(sentences.every((item) => item.wordIds.every((id) => id === "pl-103" || id === "de-49"))).toBe(true);
+    expect(sentences.some((item) => item.wordIds.includes("pl-798"))).toBe(false);
   });
 });

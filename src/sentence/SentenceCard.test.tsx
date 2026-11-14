@@ -13,13 +13,13 @@ describe("SentenceCard", () => {
         knownPrompt={2}
         knownAnswer={1}
         ready={1}
+        unlockHint="Know at least one more verb or adjective on both sides (3 more sentences needed)."
         onOpen={() => undefined}
       />,
     );
     expect(html).toContain("Sentence quiz");
     expect(html).toContain("English–Polish");
-    expect(html).toContain("1 known in Polish");
-    expect(html).toContain("2 known in English");
+    expect(html).toContain("more sentences needed");
     expect(html).toContain("Open");
   });
 

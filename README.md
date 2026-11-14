@@ -44,11 +44,11 @@ The app is a Vite + React static site. GitHub Actions builds `dist/` and publish
 
 ## Sentence quiz
 
-Open **Sentence quiz** on the home screen. The card shows how many of the sentence words you know in each language of the pair, and how many sentences that is enough to build. Four sentences unlock a round of up to eight.
+Open **Sentence quiz** on the home screen. Sentences are built from **your study vocabulary** for the pair (deck cards plus add-a-word), restricted to words you know on both sides that are not weak. Four distinct sentences unlock a round of up to eight. The home card explains how many more eligible words you need when locked.
 
-A word counts as known in a language when, in the direction that asks you to produce that language, the last two graded answers were correct, or you marked it on the sentence screen. A later miss drops the “two in a row” condition. A mark stays until you clear it. Quiz and study checks are graded attempts. A quiz skip counts as a miss. A study reveal does not. Sentence-quiz answers do not change word accuracy.
+A word counts as known when the last two graded answers in that direction were correct, or you marked it on the sentence screen. Weak means under 60% accuracy. Quiz and study checks are graded attempts; a quiz skip counts as a miss; a study reveal does not. Sentence-quiz answers do not change word accuracy.
 
-The sentences are filled from `public/data/sentences/`. `index.json` is the shared lexicon (part of speech, which nouns can be subjects or objects, and the deck ids that count as knowing that word). `public/data/sentences/<code>.json` is loaded the first time that language is needed. Each file stores the frame and the exact form the frame needs, including gender, case, and the article, so Polish, German, Russian, and the others stay grammatical without a conjugation engine. Japanese also accepts the plain verb and the adjective without です. Mandarin templates stay simple (no inflection): subject–verb–object frames and *很* before adjectives. Typed answers ignore case, extra spaces, and a final period. They do not ignore a missing article.
+Templates live in `public/data/sentences/<code>.json` (frames only). Slot metadata is in `grammar.json`, with runtime inference from POS / gender / citation forms when possible. Words without enough metadata are skipped for slots that need it. Mandarin has no articles and no inflection (`很` before adjectives). When translating from a language without articles (Polish, Russian, Japanese, Mandarin) into one that has them, definite vs indefinite (and bare noun) is not marked wrong; the reference answer still shows on reveal. Everything else stays strict.
 
 ## Continuous integration
 
@@ -266,7 +266,7 @@ English, Polish, and German citation forms still come from the frequency-list bu
 ```
 public/data/catalog.json      concept ids, ranks, part of speech
 public/data/langs/<code>.json forms for one language, loaded on demand
-public/data/sentences/        sentence lexicon and one template file per language
+public/data/sentences/        sentence frames, grammar.json slot metadata
 firestore.rules               per-user Firestore rules (words, and accuracy up to 1500 ids)
 firebase.json                 points the Firebase CLI at those rules
 .env.example                  Vite names for the Firebase web config

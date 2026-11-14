@@ -113,19 +113,15 @@ The home hint shows how many cards in the current band are weak for this directi
 
 ### Unlock
 
-Sentence quiz unlocks for the current pair when the generator can build at least **4** sentences whose content words are known on **both** sides. Articles, the copula, and Japanese particles are template grammar, not content words.
+Sentence quiz unlocks for the current pair when the generator can build at least **4** distinct sentences from **eligible study words**. Eligible means: the card is in the current pair's study vocabulary (deck + add-a-word), it is **known** on both sides, it is **not weak** (<60% accuracy) on those sides, and it has enough part-of-speech / grammar metadata to fill a typed slot. Articles, the copula, Japanese particles, and Mandarin 很 are template grammar, not content words.
 
-The home card shows, for the pair, how many lexicon words are known on each side and whether 4 sentences are ready. Opening the card before unlock shows the lexicon with per-side known toggles and does not start a round. After unlock, the screen can start a round of up to 8 sentences.
+The home card shows how many eligible study words are ready on each side and whether 4 sentences can be built. When locked, it explains how many more known words / sentences are needed. Opening before unlock shows study nouns/verbs/adjectives with per-side known toggles. After unlock, a round asks for up to 8 sentences.
 
 ### Generation
 
-Content words come from a small curated lexicon, not from raw deck text. Deck lines are citation forms, often with several genders or a wrong part of speech, so filling them into a sentence would be ungrammatical. The lexicon stores the exact surface form each template needs (nominative and accusative noun phrases, a 3rd-person singular verb, predicative adjectives by gender).
+Content words come from the user's **actual study vocabulary** for the pair — not a fixed preset list. Grammatical **templates** stay in `public/data/sentences/<code>.json` (frames only). Slot-fill metadata lives in `public/data/sentences/grammar.json` (keyed by deck / custom word id, with concept fallback), plus runtime inference from card POS, citation forms, and gender contexts.
 
-Shared index: `public/data/sentences/index.json` (ids, part of speech, semantic tags, deck ids, verb valence, which subjects and objects are allowed).
-
-One file per language, fetched the first time that language is needed and then cached: `public/data/sentences/<code>.json`. It holds the frame strings and the forms. The main bundle does not include them. The home card loads the index and the two selected languages only.
-
-Frames, and only these:
+Frames:
 
 | Frame | Shape | Example (English) |
 | --- | --- | --- |
@@ -133,40 +129,36 @@ Frames, and only these:
 | `vt` | subject + transitive verb + object | The child reads the book. |
 | `adj` | subject + copula + adjective | The house is big. |
 
-Subject and object restrictions keep the sentences possible: people and animals sleep, only people work and read, eat takes bread, drink takes water, see takes people, animals, places, and things. A verb is not paired with the same noun as both subject and object.
+In-memory indexes group eligible words by POS (`noun` / `verb` / `adjective`) for O(1) slot lookup. Template and word choice are randomized each round; the sampler avoids immediate sentence-id repeats when alternatives exist. Newly known (and non-weak) study words appear as soon as they have enough metadata for a slot.
 
-Agreement is data, not a conjugator:
+Agreement and articles are data / small renderers, not a full conjugator:
 
-- Each noun stores `npNom`, `npAcc`, and a gender `m` / `f` / `n`. The accusative phrase already includes the article or the personal *a* (*den Freund*, *al amigo*, *książkę*, *друга*). French and Italian elision is part of the stored phrase (*l'école*, *l'acqua*).
-- Adjectives store `m`, `f`, and `n`. The renderer picks the subject’s gender. Languages with an uninflected predicative adjective repeat the same string three times (*groß*, *big*, *大きい*).
-- Russian present-tense copula is omitted: `Дом большой.`
-- Japanese uses topic `は`, object `を`, and the polite verb. The plain verb and the adjective without `です` are extra accepted answers, not the prompt.
-- The first character of a Latin or Cyrillic sentence is capitalized. German nouns stay capitalized in the middle of the sentence. Japanese is unchanged.
-- A missing form skips that sentence. The renderer never leaves a `{slot}` in the output.
+- Nouns need a lemma and, for article languages, gender (from grammar.json, Wiktionary context on the card, or safe heuristics). Accusative overrides live in grammar when citation ≠ needed form.
+- Verbs need a finite 3sg (or Mandarin citation / Japanese polite) form in grammar or by inference (English *-s*, regular Polish patterns, Mandarin lemma-as-finite).
+- Adjectives store or infer predicative *m/f/n* (German predicative is uninflected; Mandarin has no inflection).
+- Mandarin (`zh`): `articles: false`, no inflection; frames are `{subject}{verb}。` / `{subject}{verb}{object}。` / `{subject}很{adj}。`.
+- Russian omits the present copula; Japanese keeps は / を / です with plain-form alts.
+- Words lacking required metadata for the pair are simply skipped for slots that need it.
 
-Lexicon (11 nouns, 8 verbs, 4 adjectives): house, dog, child, book, water, school, car, city, cat, bread, friend; sleep, work, wait, read, see, eat, drink, write; big, small, new, good. Deck ids are attached where the catalog already has that concept (`house` → `pl-103` and `de-156`, and the same for the other shared lemmas). Cat, bread, and several verbs are lexicon-only until the user marks them or a later deck happens to use that id.
+The old curated preset (`index.json` and per-language noun/verb/adj maps) is removed. Curated surface forms were folded into `grammar.json` where useful.
 
 ### Checking a translation
 
-The prompt is the canonical sentence in the prompt language. The answer language contributes one or more full sentences (canonical, Japanese plain-form variants, and any hand-listed alternate of a single slot).
+The prompt is the canonical sentence in the prompt language. The answer language contributes one or more full sentences (canonical reference first, plus Japanese plain-form variants and listed alts). Reveal always shows the reference answer(s).
 
-A typed answer is correct when, after folding, it equals one of those sentences. Folding:
+A typed answer is correct when, after folding, it equals one of those sentences — **except** when the prompt language has no articles (`articles: false`: Polish, Russian, Japanese, Mandarin) and the answer language has them. Then definite vs indefinite (and bare noun where natural) must not be marked wrong: articles are stripped for comparison only. Content words stay strict. EN→PL is unaffected. EN→DE (both have articles) stays strict.
 
-- Unicode NFC, trimmed, internal whitespace collapsed, case folded with the answer language’s locale
-- the answer language’s existing diacritic rules (Polish marks required, Russian `ё` matches `е`, Japanese macrons ignored on Latin letters)
-- curly apostrophes become straight apostrophes
-- one trailing run of `.` `!` `?` `。` `？` `！` is removed
-- for Japanese, spaces are removed so `猫 は 寝ます` matches `猫は寝ます`
+Folding otherwise:
 
-The checker does not strip articles or optional English *the* / *a*. `cat sleeps` is not accepted for `The cat sleeps.`
+- Unicode NFC, trimmed, internal whitespace collapsed, case folded with the answer language's locale
+- the answer language's diacritic rules; curly apostrophes → straight; trailing `.!?。？！` removed
+- Japanese and Mandarin: spaces removed for compare; Mandarin also accepts pinyin via the shared answer normalizer
 
-Sentence rounds show the same style of card, letter bar, and score summary as word quiz, in their own component. A correct or incorrect sentence does not change word accuracy.
+Sentence rounds do not change word accuracy.
 
 ### Entry
 
-The app has no router. The sentence screen is a hash route `#sentence`, so a refresh keeps it and the word-quiz session component stays untouched. Leaving the screen clears the hash.
-
-The home panel has its own card, separate from My words and from the Study / Quiz switch. It shows the pair, the known counts, and either “Not ready” or how many sentences are available. The button opens `#sentence`.
+Hash route `#sentence`. The home card is separate from My words and Study / Quiz.
 
 ## Firestore rules
 
@@ -199,13 +191,14 @@ Accuracy:
 
 Sentences:
 
-- every lexicon id has complete forms in all ten language files
-- every legal filling renders with no leftover `{` and the right final punctuation
-- golden sentences for each language: cat sleeps; child reads book; house is big; water is small (gender: *El agua es pequeña*, *L'eau est petite*, *Woda jest mała*); dog sees friend (accusative: *den Freund*, *al amigo*, *przyjaciela*, *друга*)
-- the cat does not “work” or “read”; a noun is not both subject and object
-- an unknown content word drops every sentence that needs it
-- two correct attempts on the deck ids, on both directions, make that lexicon word eligible
-- answer check accepts case, extra spaces, a missing final period, Japanese plain form, and Russian `е` for `ё`; it rejects a missing article, a wrong noun, and Polish without diacritics
+- no preset `index.json`; language files are frames-only (including `zh.json`)
+- generation uses only known, non-weak study words with enough grammar metadata
+- a newly known custom word appears in generated sentences
+- rounds vary and avoid immediate repeats when possible
+- unlock at 4 distinct sentences; locked state explains missing words
+- golden EN/PL/DE/ZH renderings from study ids (including Mandarin 很 / no inflection)
+- article equivalence: PL→EN and PL→DE accept a/the/der/die/…/bare; EN→PL unaffected; EN→DE stays strict; ZH→EN flexible
+- answer check still accepts case, spacing, missing final period, Japanese plain form, Russian `е`/`ё`
 
 Existing unit tests stay as they are.
 

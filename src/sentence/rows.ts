@@ -1,6 +1,9 @@
 import { isKnown, type WordStat } from "../accuracy/stats";
-import { isLexiconItemKnown } from "./generate";
-import type { Lexicon, SentencePack } from "./types";
+import type { LangCode } from "../lib/languages";
+import type { Entry } from "../types";
+import { slotLabel } from "./generate";
+import type { GrammarFile, SlotWord } from "./types";
+import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab";
 
 export type SentenceWordRow = {
   id: string;
@@ -11,85 +14,65 @@ export type SentenceWordRow = {
   answerKnown: boolean;
   promptManual: boolean;
   answerManual: boolean;
+  eligible: boolean;
 };
 
-function knownSide(item: { id: string; deckIds: string[] }, stats: ReadonlyMap<string, WordStat>): {
-  known: boolean;
-  manual: boolean;
-} {
-  const ids = [item.id, ...item.deckIds];
-  const statsForIds = ids.map((id) => stats.get(id)).filter((stat): stat is WordStat => Boolean(stat));
-  const known = isLexiconItemKnown(
-    item,
-    new Set(ids.filter((id) => isKnown(stats.get(id)))),
-  );
-  return { known, manual: statsForIds.some((stat) => stat.manual && isKnown(stat)) };
+function sideState(stats: ReadonlyMap<string, WordStat>, id: string): { known: boolean; manual: boolean } {
+  const stat = stats.get(id);
+  return {
+    known: isKnown(stat),
+    manual: Boolean(stat?.manual && isKnown(stat)),
+  };
 }
 
-function showNoun(pack: SentencePack, id: string): string {
-  return pack.nouns[id]?.npNom || id;
-}
-
-function showVerb(pack: SentencePack, id: string): string {
-  return pack.verbs[id]?.form || id;
-}
-
-function showAdj(pack: SentencePack, id: string): string {
-  const form = pack.adjectives[id];
-  if (!form) return id;
-  const forms = [form.m, form.f, form.n].filter(Boolean);
-  return [...new Set(forms)].join(" / ");
+/** Pretend the card is known so we can reuse surface resolution for lobby labels. */
+function displaySlot(
+  entry: Entry,
+  grammar: GrammarFile,
+  promptLang: LangCode,
+  answerLang: LangCode,
+): SlotWord | undefined {
+  const known: WordStat = {
+    correct: 2,
+    attempts: 2,
+    lastSeen: 1,
+    windowBits: 0b11,
+    windowLen: 2,
+    manual: false,
+  };
+  const stats = new Map([[entry.id, known]]);
+  return buildVocabIndex([entry], grammar, promptLang, answerLang, stats, stats).byId.get(entry.id);
 }
 
 export function sentenceRows(
-  lexicon: Lexicon,
-  promptPack: SentencePack,
-  answerPack: SentencePack,
+  studyEntries: readonly Entry[],
+  grammar: GrammarFile,
+  promptLang: LangCode,
+  answerLang: LangCode,
   promptStats: ReadonlyMap<string, WordStat>,
   answerStats: ReadonlyMap<string, WordStat>,
 ): SentenceWordRow[] {
+  const candidates = listGrammarCandidates(studyEntries, grammar, promptLang, answerLang);
   const rows: SentenceWordRow[] = [];
-  for (const noun of lexicon.nouns) {
-    const prompt = knownSide(noun, promptStats);
-    const answer = knownSide(noun, answerStats);
+
+  for (const entry of candidates) {
+    const display = displaySlot(entry, grammar, promptLang, answerLang);
+    if (!display) continue;
+    const prompt = sideState(promptStats, entry.id);
+    const answer = sideState(answerStats, entry.id);
     rows.push({
-      id: noun.id,
-      pos: "noun",
-      prompt: showNoun(promptPack, noun.id),
-      answer: showNoun(answerPack, noun.id),
+      id: entry.id,
+      pos: display.pos,
+      prompt: slotLabel(display, "prompt"),
+      answer: slotLabel(display, "answer"),
       promptKnown: prompt.known,
       answerKnown: answer.known,
       promptManual: prompt.manual,
       answerManual: answer.manual,
+      eligible: isEligibleStat(promptStats.get(entry.id)) && isEligibleStat(answerStats.get(entry.id)),
     });
   }
-  for (const verb of lexicon.verbs) {
-    const prompt = knownSide(verb, promptStats);
-    const answer = knownSide(verb, answerStats);
-    rows.push({
-      id: verb.id,
-      pos: "verb",
-      prompt: showVerb(promptPack, verb.id),
-      answer: showVerb(answerPack, verb.id),
-      promptKnown: prompt.known,
-      answerKnown: answer.known,
-      promptManual: prompt.manual,
-      answerManual: answer.manual,
-    });
-  }
-  for (const adj of lexicon.adjectives) {
-    const prompt = knownSide(adj, promptStats);
-    const answer = knownSide(adj, answerStats);
-    rows.push({
-      id: adj.id,
-      pos: "adjective",
-      prompt: showAdj(promptPack, adj.id),
-      answer: showAdj(answerPack, adj.id),
-      promptKnown: prompt.known,
-      answerKnown: answer.known,
-      promptManual: prompt.manual,
-      answerManual: answer.manual,
-    });
-  }
+
+  rows.sort((a, b) => a.pos.localeCompare(b.pos) || a.prompt.localeCompare(b.prompt));
   return rows;
 }

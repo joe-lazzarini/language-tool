@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnswerReveal } from "../components/AnswerReveal";
 import { SpecialKeys } from "../components/SpecialKeys";
 import type { WordStat } from "../accuracy/stats";
-import { knownIdSet } from "../accuracy/stats";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "../lib/advanceKey";
 import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "../lib/ime";
 import {
@@ -13,11 +12,13 @@ import {
   SPECIAL_LETTERS,
   type LangCode,
 } from "../lib/languages";
+import type { Entry } from "../types";
 import { isCorrectSentence } from "./check";
-import { generateSentences, MIN_READY_SENTENCES, sampleSentences, SENTENCE_ROUND } from "./generate";
-import { loadLexicon, loadSentencePack } from "./load";
+import { generateSentences, MIN_READY_SENTENCES, sampleSentences, SENTENCE_ROUND, unlockHint } from "./generate";
+import { loadGrammar, loadSentencePack } from "./load";
 import { sentenceRows, type SentenceWordRow } from "./rows";
-import type { Lexicon, PracticeSentence, SentencePack } from "./types";
+import type { GrammarFile, PracticeSentence, SentencePack } from "./types";
+import { buildVocabIndex } from "./vocab";
 
 type Phase = "lobby" | "round";
 
@@ -43,38 +44,48 @@ function WordGroups({
     ["verb", "Verbs"],
     ["adjective", "Adjectives"],
   ] as const;
+  if (rows.length === 0) {
+    return (
+      <p className="hint">No study nouns, verbs, or adjectives have enough grammar metadata for sentences yet.</p>
+    );
+  }
   return (
     <div className="sentence-groups">
-      {groups.map(([pos, label]) => (
-        <section key={pos} className="sentence-group">
-          <h3>{label}</h3>
-          <ul className="sentence-words">
-            {rows.filter((row) => row.pos === pos).map((row) => (
-              <li key={row.id}>
-                <p className="sentence-forms">
-                  <span lang={languageByCode(from).locale}>{row.prompt}</span>
-                  <span aria-hidden="true">→</span>
-                  <span lang={languageByCode(to).locale}>{row.answer}</span>
-                </p>
-                <div className="tool-row">
-                  <KnownButton
-                    language={languageName(from)}
-                    known={row.promptKnown}
-                    manual={row.promptManual}
-                    onToggle={(manual) => onToggle("prompt", row.id, manual)}
-                  />
-                  <KnownButton
-                    language={languageName(to)}
-                    known={row.answerKnown}
-                    manual={row.answerManual}
-                    onToggle={(manual) => onToggle("answer", row.id, manual)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {groups.map(([pos, label]) => {
+        const group = rows.filter((row) => row.pos === pos);
+        if (group.length === 0) return null;
+        return (
+          <section key={pos} className="sentence-group">
+            <h3>{label}</h3>
+            <ul className="sentence-words">
+              {group.map((row) => (
+                <li key={row.id}>
+                  <p className="sentence-forms">
+                    <span lang={languageByCode(from).locale}>{row.prompt}</span>
+                    <span aria-hidden="true">→</span>
+                    <span lang={languageByCode(to).locale}>{row.answer}</span>
+                    {row.eligible ? <span className="pos"> in sentences</span> : null}
+                  </p>
+                  <div className="tool-row">
+                    <KnownButton
+                      language={languageName(from)}
+                      known={row.promptKnown}
+                      manual={row.promptManual}
+                      onToggle={(manual) => onToggle("prompt", row.id, manual)}
+                    />
+                    <KnownButton
+                      language={languageName(to)}
+                      known={row.answerKnown}
+                      manual={row.answerManual}
+                      onToggle={(manual) => onToggle("answer", row.id, manual)}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -107,6 +118,7 @@ function KnownButton({
 export function SentenceQuiz({
   from,
   to,
+  studyEntries,
   revision,
   read,
   onToggleManual,
@@ -114,17 +126,19 @@ export function SentenceQuiz({
 }: {
   from: LangCode;
   to: LangCode;
+  studyEntries: readonly Entry[];
   revision: number;
   read: (from: LangCode, to: LangCode) => Map<string, WordStat>;
   onToggleManual: (from: LangCode, to: LangCode, wordId: string, manual: boolean) => void;
   onExit: () => void;
 }) {
-  const [lexicon, setLexicon] = useState<Lexicon | null>(null);
+  const [grammar, setGrammar] = useState<GrammarFile | null>(null);
   const [promptPack, setPromptPack] = useState<SentencePack | null>(null);
   const [answerPack, setAnswerPack] = useState<SentencePack | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("lobby");
   const [round, setRound] = useState<PracticeSentence[]>([]);
+  const [previousIds, setPreviousIds] = useState<Set<string>>(new Set());
   const [index, setIndex] = useState(0);
   const [input, setInput] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -139,10 +153,10 @@ export function SentenceQuiz({
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    Promise.all([loadLexicon(), loadSentencePack(from), loadSentencePack(to)])
-      .then(([nextLexicon, nextPrompt, nextAnswer]) => {
+    Promise.all([loadGrammar(), loadSentencePack(from), loadSentencePack(to)])
+      .then(([nextGrammar, nextPrompt, nextAnswer]) => {
         if (cancelled) return;
-        setLexicon(nextLexicon);
+        setGrammar(nextGrammar);
         setPromptPack(nextPrompt);
         setAnswerPack(nextAnswer);
       })
@@ -156,18 +170,21 @@ export function SentenceQuiz({
 
   const promptStats = useMemo(() => read(to, from), [read, to, from, revision]);
   const answerStats = useMemo(() => read(from, to), [read, from, to, revision]);
-  const promptKnown = useMemo(() => knownIdSet(promptStats), [promptStats]);
-  const answerKnown = useMemo(() => knownIdSet(answerStats), [answerStats]);
+
+  const vocab = useMemo(() => {
+    if (!grammar) return null;
+    return buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
+  }, [grammar, studyEntries, from, to, promptStats, answerStats]);
 
   const sentences = useMemo(() => {
-    if (!lexicon || !promptPack || !answerPack) return [];
-    return generateSentences(lexicon, from, promptPack, to, answerPack, promptKnown, answerKnown);
-  }, [lexicon, promptPack, answerPack, from, to, promptKnown, answerKnown]);
+    if (!vocab || !promptPack || !answerPack) return [];
+    return generateSentences(vocab, from, promptPack, to, answerPack);
+  }, [vocab, promptPack, answerPack, from, to]);
 
   const rows = useMemo(() => {
-    if (!lexicon || !promptPack || !answerPack) return [];
-    return sentenceRows(lexicon, promptPack, answerPack, promptStats, answerStats);
-  }, [lexicon, promptPack, answerPack, promptStats, answerStats]);
+    if (!grammar) return [];
+    return sentenceRows(studyEntries, grammar, from, to, promptStats, answerStats);
+  }, [grammar, studyEntries, from, to, promptStats, answerStats]);
 
   useEffect(() => {
     if (phase === "round") inputRef.current?.focus();
@@ -184,7 +201,9 @@ export function SentenceQuiz({
 
   function start() {
     if (sentences.length < MIN_READY_SENTENCES) return;
-    setRound(sampleSentences(sentences, SENTENCE_ROUND));
+    const next = sampleSentences(sentences, SENTENCE_ROUND, Math.random, previousIds);
+    setPreviousIds(new Set(next.map((item) => item.id)));
+    setRound(next);
     setIndex(0);
     setInput("");
     setRevealed(false);
@@ -216,7 +235,7 @@ export function SentenceQuiz({
 
   function check(given = input) {
     if (!sentence || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
-    const ok = isCorrectSentence(given, sentence.accepted, to);
+    const ok = isCorrectSentence(given, sentence.accepted, to, from);
     setCorrect(ok);
     setRevealed(true);
     setResults((prev) => [...prev, { sentence, correct: ok, given: given.trim() }]);
@@ -297,7 +316,7 @@ export function SentenceQuiz({
     );
   }
 
-  if (!lexicon || !promptPack || !answerPack) {
+  if (!grammar || !promptPack || !answerPack || !vocab) {
     return <p className="lede">Loading sentence patterns…</p>;
   }
 
@@ -335,7 +354,7 @@ export function SentenceQuiz({
           Another round
         </button>
         <button type="button" className="secondary" onClick={() => setPhase("lobby")}>
-          Sentence words
+          Study words
         </button>
       </div>
     );
@@ -427,22 +446,23 @@ export function SentenceQuiz({
   }
 
   const unlocked = sentences.length >= MIN_READY_SENTENCES;
+  const hint = unlocked
+    ? `${sentences.length} sentences ready. A round asks for ${Math.min(SENTENCE_ROUND, sentences.length)}.`
+    : unlockHint(sentences.length, vocab) ||
+      `${sentences.length} of ${MIN_READY_SENTENCES} sentences ready. Mark words you already know, or keep quizzing them.`;
+
   return (
     <div className="stack">
       <header className="hero compact">
         <p className="eyebrow">Sentence quiz</p>
         <h1>{pairLabel(from, to)}</h1>
         <p className="lede">
-          Sentences use words you know on both sides. Two correct answers in a row, or a mark here, counts
-          as knowing the word. Grammar words such as articles stay in the template.
+          Sentences are built from study words you know on both sides that are not weak. Two correct answers
+          in a row, or a mark here, counts as knowing the word. Weak words stay out until they improve.
         </p>
       </header>
       <section className="panel">
-        <p className="hint">
-          {unlocked
-            ? `${sentences.length} sentences ready. A round asks for ${Math.min(SENTENCE_ROUND, sentences.length)}.`
-            : `${sentences.length} of ${MIN_READY_SENTENCES} sentences ready. Mark words you already know, or keep quizzing them.`}
-        </p>
+        <p className="hint">{hint}</p>
         <button type="button" className="primary" onClick={start} disabled={!unlocked}>
           Start sentence quiz
         </button>

@@ -19,6 +19,7 @@ describe("language pickers", () => {
     expect(zh.nativeName).toBe("中文");
     expect(zh.wiktionary).toBe("Chinese");
     expect(zh.wiktionaryAliases).toContain("Mandarin");
+    expect(zh.articles).toBe(false);
     expect(languageOptionLabel(zh)).toContain("中文");
     expect(languageOptionLabel(zh)).toContain("Chinese");
   });
