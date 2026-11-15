@@ -12,6 +12,9 @@
  * `foldChars` is applied after lowercasing for substitutions that are not
  * combining marks (leave empty unless a language needs one).
  * `pivot` marks the Wiktionary gloss language. Only one language should set it.
+ * `articles` is false for languages that do not mark definiteness (Polish,
+ * Russian, Japanese, Mandarin). Sentence quiz then accepts either article
+ * (or none) when translating into a language that has them.
  */
 export const LANGUAGES = [
   {
@@ -24,6 +27,7 @@ export const LANGUAGES = [
     locale: "en-US",
     specialLetters: [],
     optionalPrefixes: ["to ", "a ", "an ", "the "],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -40,6 +44,7 @@ export const LANGUAGES = [
     locale: "pl-PL",
     specialLetters: ["ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż"],
     optionalPrefixes: [],
+    articles: false,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -56,6 +61,7 @@ export const LANGUAGES = [
     locale: "de-DE",
     specialLetters: ["ä", "ö", "ü", "ß"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: true,
@@ -72,6 +78,7 @@ export const LANGUAGES = [
     locale: "es-ES",
     specialLetters: ["á", "é", "í", "ó", "ú", "ü", "ñ"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -88,6 +95,7 @@ export const LANGUAGES = [
     locale: "fr-FR",
     specialLetters: ["à", "â", "ç", "é", "è", "ê", "ë", "î", "ï", "ô", "ù", "û", "ü", "œ"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -104,6 +112,7 @@ export const LANGUAGES = [
     locale: "it-IT",
     specialLetters: ["à", "è", "é", "ì", "ò", "ó", "ù"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -120,6 +129,7 @@ export const LANGUAGES = [
     locale: "pt-PT",
     specialLetters: ["á", "à", "â", "ã", "ç", "é", "ê", "í", "ó", "ô", "õ", "ú"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -136,6 +146,7 @@ export const LANGUAGES = [
     locale: "nl-NL",
     specialLetters: ["é", "ë", "ï", "ó", "ö", "ü"],
     optionalPrefixes: [],
+    articles: true,
     diacritics: "required",
     foldChars: [],
     capitalizeLookup: false,
@@ -152,6 +163,7 @@ export const LANGUAGES = [
     locale: "ru-RU",
     specialLetters: [],
     optionalPrefixes: [],
+    articles: false,
     diacritics: "strip",
     foldChars: [],
     capitalizeLookup: false,
@@ -168,6 +180,7 @@ export const LANGUAGES = [
     locale: "ja-JP",
     specialLetters: [],
     optionalPrefixes: [],
+    articles: false,
     diacritics: "strip-latin",
     foldChars: [],
     capitalizeLookup: false,
@@ -184,6 +197,7 @@ export const LANGUAGES = [
     locale: "zh-CN",
     specialLetters: [],
     optionalPrefixes: [],
+    articles: false,
     diacritics: "strip-latin",
     foldChars: [],
     capitalizeLookup: false,
@@ -217,6 +231,11 @@ export function isLangCode(value: string): value is LangCode {
 
 export function languageByCode(code: LangCode): LanguageInfo {
   return byCode[code];
+}
+
+/** True when the language marks definiteness with articles (or clitics like French l'). */
+export function languageHasArticles(code: LangCode): boolean {
+  return Boolean(languageByCode(code).articles);
 }
 
 export function languageName(code: LangCode): string {

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { knownIdSet, type WordStat } from "../accuracy/stats";
+import type { WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
-import { generateSentences, lexiconKnownCount } from "./generate";
-import { loadLexicon, loadSentencePack } from "./load";
+import type { Entry } from "../types";
+import { generateSentences, unlockHint } from "./generate";
+import { loadGrammar, loadSentencePack } from "./load";
+import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab";
 
 export type SentenceStatus = {
   loading: boolean;
@@ -10,6 +12,7 @@ export type SentenceStatus = {
   knownPrompt: number;
   knownAnswer: number;
   ready: number;
+  unlockHint: string;
 };
 
 const empty: SentenceStatus = {
@@ -18,6 +21,7 @@ const empty: SentenceStatus = {
   knownPrompt: 0,
   knownAnswer: 0,
   ready: 0,
+  unlockHint: "",
 };
 
 export function useSentenceStatus(
@@ -25,26 +29,28 @@ export function useSentenceStatus(
   to: LangCode,
   revision: number,
   read: (from: LangCode, to: LangCode) => Map<string, WordStat>,
+  studyEntries: readonly Entry[],
 ): SentenceStatus {
   const [status, setStatus] = useState<SentenceStatus>(empty);
 
   useEffect(() => {
     let cancelled = false;
     setStatus((current) => ({ ...current, loading: true, error: null }));
-    Promise.all([loadLexicon(), loadSentencePack(from), loadSentencePack(to)])
-      .then(([lexicon, promptPack, answerPack]) => {
+    Promise.all([loadGrammar(), loadSentencePack(from), loadSentencePack(to)])
+      .then(([grammar, promptPack, answerPack]) => {
         if (cancelled) return;
         const promptStats = read(to, from);
         const answerStats = read(from, to);
-        const promptKnown = knownIdSet(promptStats);
-        const answerKnown = knownIdSet(answerStats);
-        const ready = generateSentences(lexicon, from, promptPack, to, answerPack, promptKnown, answerKnown).length;
+        const candidates = listGrammarCandidates(studyEntries, grammar, from, to);
+        const index = buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
+        const ready = generateSentences(index, from, promptPack, to, answerPack).length;
         setStatus({
           loading: false,
           error: null,
-          knownPrompt: lexiconKnownCount(lexicon, promptKnown),
-          knownAnswer: lexiconKnownCount(lexicon, answerKnown),
+          knownPrompt: candidates.filter((entry) => isEligibleStat(promptStats.get(entry.id))).length,
+          knownAnswer: candidates.filter((entry) => isEligibleStat(answerStats.get(entry.id))).length,
           ready,
+          unlockHint: unlockHint(ready, index),
         });
       })
       .catch(() => {
@@ -55,7 +61,7 @@ export function useSentenceStatus(
     return () => {
       cancelled = true;
     };
-  }, [from, to, revision, read]);
+  }, [from, to, revision, read, studyEntries]);
 
   return status;
 }

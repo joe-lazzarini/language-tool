@@ -1,48 +1,10 @@
+import type { LangCode } from "../lib/languages";
+
 export type Sem = "person" | "animal" | "place" | "thing" | "food" | "drink" | "readable";
 
 export type Gender = "m" | "f" | "n";
 
-export type LexNoun = {
-  id: string;
-  sem: Sem[];
-  deckIds: string[];
-};
-
-export type LexVerb = {
-  id: string;
-  valence: "vi" | "vt";
-  subject: Sem[];
-  object?: Sem[];
-  deckIds: string[];
-};
-
-export type LexAdj = {
-  id: string;
-  deckIds: string[];
-};
-
-export type Lexicon = {
-  nouns: LexNoun[];
-  verbs: LexVerb[];
-  adjectives: LexAdj[];
-};
-
-export type NounForm = {
-  npNom: string;
-  npAcc: string;
-  gender: Gender;
-};
-
-export type VerbForm = {
-  form: string;
-  alts?: string[];
-};
-
-export type AdjForm = {
-  m: string;
-  f: string;
-  n: string;
-};
+export type SentenceFrame = "vi" | "vt" | "adj";
 
 export type SentenceFrames = {
   vi: string;
@@ -54,18 +16,68 @@ export type SentenceFrames = {
 
 export type SentencePack = {
   frames: SentenceFrames;
-  nouns: Record<string, NounForm>;
-  verbs: Record<string, VerbForm>;
-  adjectives: Record<string, AdjForm>;
 };
 
-export type SentenceFrame = "vi" | "vt" | "adj";
+/** Per-language surface data for one study word. */
+export type LangSurface = {
+  lemma: string;
+  gender?: Gender;
+  /** Bare accusative lemma when different from nominative. */
+  acc?: string;
+  /** Ready-made noun phrases (include article when the language has one). */
+  npNom?: string;
+  npAcc?: string;
+  /** Finite 3rd-person singular (or polite Japanese) verb form. */
+  fin?: string;
+  alts?: string[];
+  /** Predicative adjective forms by subject gender. */
+  m?: string;
+  f?: string;
+  n?: string;
+};
+
+export type GrammarWord = {
+  pos: "noun" | "verb" | "adjective";
+  concept?: string;
+  sem?: Sem[];
+  valence?: "vi" | "vt";
+  subject?: Sem[];
+  object?: Sem[];
+  langs: Partial<Record<LangCode, LangSurface>>;
+};
+
+export type GrammarFile = {
+  version: number;
+  words: Record<string, GrammarWord>;
+};
+
+/** A study card that can fill sentence slots for the current pair. */
+export type SlotWord = {
+  id: string;
+  pos: "noun" | "verb" | "adjective";
+  concept?: string;
+  sem: Sem[];
+  valence?: "vi" | "vt";
+  subject?: Sem[];
+  object?: Sem[];
+  prompt: LangSurface;
+  answer: LangSurface;
+};
+
+export type VocabIndex = {
+  nouns: SlotWord[];
+  verbs: SlotWord[];
+  adjectives: SlotWord[];
+  byId: Map<string, SlotWord>;
+  byPos: { noun: SlotWord[]; verb: SlotWord[]; adjective: SlotWord[] };
+};
 
 export type PracticeSentence = {
   id: string;
   frame: SentenceFrame;
-  /** Lexicon ids: subject, verb or adjective, and object when there is one. */
+  /** Study word ids: subject, verb or adjective, and object when there is one. */
   wordIds: string[];
   prompt: string;
+  /** Canonical reference answer is accepted[0]; further entries are alternates. */
   accepted: string[];
 };

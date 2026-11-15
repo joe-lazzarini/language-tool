@@ -9,6 +9,7 @@ export function SentenceCard({
   knownPrompt,
   knownAnswer,
   ready,
+  unlockHint = "",
   onOpen,
 }: {
   from: LangCode;
@@ -18,13 +19,15 @@ export function SentenceCard({
   knownPrompt: number;
   knownAnswer: number;
   ready: number;
+  unlockHint?: string;
   onOpen: () => void;
 }) {
   const unlocked = ready >= MIN_READY_SENTENCES;
-  let hint = `${knownAnswer} known in ${languageName(to)}, ${knownPrompt} known in ${languageName(from)}. ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
+  let hint = `${knownAnswer} ready in ${languageName(to)}, ${knownPrompt} ready in ${languageName(from)}. ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
   if (error) hint = error;
   else if (loading) hint = "Loading sentence patterns…";
-  else if (unlocked) hint = `${ready} sentences ready from words you know in both languages.`;
+  else if (unlocked) hint = `${ready} sentences ready from study words you know in both languages.`;
+  else if (unlockHint) hint = unlockHint;
 
   return (
     <section className="sentence-card" aria-label="Sentence quiz">

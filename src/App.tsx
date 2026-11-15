@@ -148,6 +148,7 @@ function Home({
     knownPrompt: number;
     knownAnswer: number;
     ready: number;
+    unlockHint: string;
   };
   onStart: () => void;
   onAdd: () => void;
@@ -221,6 +222,7 @@ function Home({
           knownPrompt={sentence.knownPrompt}
           knownAnswer={sentence.knownAnswer}
           ready={sentence.ready}
+          unlockHint={sentence.unlockHint}
           onOpen={onSentence}
         />
 
@@ -624,7 +626,6 @@ export function App() {
   const [editing, setEditing] = useState<CustomWord | null>(null);
   const wordsApi = useCustomWords();
   const accuracy = useAccuracy(wordsApi.account?.uid ?? null);
-  const sentenceStatus = useSentenceStatus(settings.from, settings.to, accuracy.revision, accuracy.read);
 
   useEffect(() => {
     function onHash() {
@@ -690,6 +691,18 @@ export function App() {
   const studyEntries = useMemo(
     () => (catalog ? withCustomEntries(entries, customEntries) : customEntries),
     [catalog, entries, customEntries],
+  );
+  /** All pair vocabulary for sentence quiz (deck + add-a-word), not the study band. */
+  const sentenceEntries = useMemo(
+    () => entriesForPair(studyEntries, settings.from, settings.to),
+    [studyEntries, settings.from, settings.to],
+  );
+  const sentenceStatus = useSentenceStatus(
+    settings.from,
+    settings.to,
+    accuracy.revision,
+    accuracy.read,
+    sentenceEntries,
   );
   const pairEntries = useMemo(() => {
     const source = settings.range === "mine" ? customEntries : studyEntries;
@@ -789,6 +802,7 @@ export function App() {
           <SentenceQuiz
             from={settings.from}
             to={settings.to}
+            studyEntries={sentenceEntries}
             revision={accuracy.revision}
             read={accuracy.read}
             onToggleManual={accuracy.toggleManual}
