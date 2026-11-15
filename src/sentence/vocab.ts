@@ -96,18 +96,56 @@ function pl3sg(lemma: string): string | null {
 
 function plAdjForms(lemma: string): { m: string; f: string; n: string } {
   const lower = lemma.toLowerCase();
+  // Hard stems: wielki → wielka / wielkie; szybki → szybka / szybkie (not *wielkia).
+  if (lower.endsWith("ki") || lower.endsWith("gi")) {
+    return { m: lemma, f: `${lemma.slice(0, -1)}a`, n: `${lemma}e` };
+  }
   if (lower.endsWith("y")) return { m: lemma, f: `${lemma.slice(0, -1)}a`, n: `${lemma.slice(0, -1)}e` };
   if (lower.endsWith("i")) return { m: lemma, f: `${lemma}a`, n: `${lemma}e` };
   return { m: lemma, f: lemma, n: lemma };
 }
 
-function plAcc(lemma: string, gender: Gender): string {
+/** Masculine-animate accusative for common study lemmas and productive endings. */
+function plMasculineAnimateAcc(lemma: string): string {
+  const irregular: Record<string, string> = {
+    pies: "psa",
+    kot: "kota",
+    ojciec: "ojca",
+    człowiek: "człowieka",
+    brat: "brata",
+    mąż: "męża",
+    książę: "księcia",
+    bóg: "boga",
+    mieszkaniec: "mieszkańca",
+  };
+  const lower = lemma.toLowerCase();
+  if (irregular[lower]) return irregular[lower]!;
+  if (lower.endsWith("iec")) return `${lemma.slice(0, -3)}ca`;
+  if (lower.endsWith("ek")) return `${lemma.slice(0, -2)}ka`;
+  return `${lemma}a`;
+}
+
+function plAcc(lemma: string, gender: Gender, animate = false): string {
   if (gender === "f" && lemma.endsWith("a")) return `${lemma.slice(0, -1)}ę`;
+  if (gender === "m" && animate) return plMasculineAnimateAcc(lemma);
   return lemma;
 }
 
+/** True when a stored Polish feminine looks like the old -ki/-gi → *ia bug. */
+function isBrokenPlAdjFeminine(lemma: string, feminine: string | undefined): boolean {
+  if (!feminine) return false;
+  const lower = lemma.toLowerCase();
+  if (!(lower.endsWith("ki") || lower.endsWith("gi"))) return false;
+  return feminine.toLowerCase() === `${lower.slice(0, -1)}ia`;
+}
+
 /** Infer surface forms from a study card when grammar.json has gaps. */
-export function inferSurface(entry: Entry, lang: LangCode, pos: "noun" | "verb" | "adjective"): LangSurface | null {
+export function inferSurface(
+  entry: Entry,
+  lang: LangCode,
+  pos: "noun" | "verb" | "adjective",
+  opts: { animate?: boolean } = {},
+): LangSurface | null {
   const lemma = citationLemma(entry, lang);
   if (!lemma) return null;
   if (pos === "noun") {
@@ -116,7 +154,7 @@ export function inferSurface(entry: Entry, lang: LangCode, pos: "noun" | "verb" 
       return null;
     }
     const surface: LangSurface = { lemma, gender: gender ?? "n" };
-    if (lang === "pl") surface.acc = plAcc(lemma, gender ?? "m");
+    if (lang === "pl") surface.acc = plAcc(lemma, gender ?? "m", opts.animate === true);
     return surface;
   }
   if (pos === "verb") {
@@ -137,19 +175,41 @@ function mergeSurface(base: LangSurface | undefined, inferred: LangSurface | nul
   if (!base && !inferred) return null;
   if (!base) return inferred;
   if (!inferred) return base;
+  const lemma = base.lemma || inferred.lemma;
+  const preferInferredF = isBrokenPlAdjFeminine(lemma, base.f) && Boolean(inferred.f);
   return {
     ...inferred,
     ...base,
-    lemma: base.lemma || inferred.lemma,
+    lemma,
     gender: base.gender ?? inferred.gender,
     acc: base.acc ?? inferred.acc,
     fin: base.fin ?? inferred.fin,
     alts: base.alts ?? inferred.alts,
     m: base.m ?? inferred.m,
-    f: base.f ?? inferred.f,
+    f: preferInferredF ? inferred.f : (base.f ?? inferred.f),
     n: base.n ?? inferred.n,
     npNom: base.npNom ?? inferred.npNom,
     npAcc: base.npAcc ?? inferred.npAcc,
+  };
+}
+
+function isAnimateSem(sem: readonly Sem[] | undefined): boolean {
+  return Boolean(sem?.includes("person") || sem?.includes("animal"));
+}
+
+/** Prefer a real masculine-animate accusative when grammar left the nominative. */
+function repairPlNounAcc(surface: LangSurface, animate: boolean): LangSurface {
+  if (!animate || surface.gender !== "m") return surface;
+  const lemma = surface.lemma;
+  if (!lemma) return surface;
+  const fixed = plAcc(lemma, "m", true);
+  const accIsNom = !surface.acc || surface.acc === lemma;
+  const npAccIsNom = !surface.npAcc || surface.npAcc === lemma;
+  if (!accIsNom && !npAccIsNom) return surface;
+  return {
+    ...surface,
+    acc: accIsNom ? fixed : surface.acc,
+    npAcc: npAccIsNom ? fixed : surface.npAcc,
   };
 }
 
@@ -204,9 +264,14 @@ export function buildVocabIndex(
     const metaPos = meta?.pos ?? pos;
     if (metaPos !== pos && meta) continue;
 
-    const prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos));
-    const answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos));
+    // Animacy comes only from curated grammar tags — do not infer it from the
+    // open default sem list, or inanimates like dom would get *doma.
+    const animate = pos === "noun" && isAnimateSem(meta?.sem);
+    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }));
+    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }));
     if (!prompt || !answer) continue;
+    if (pos === "noun" && promptLang === "pl") prompt = repairPlNounAcc(prompt, animate);
+    if (pos === "noun" && answerLang === "pl") answer = repairPlNounAcc(answer, animate);
     if (!surfaceReady(pos, prompt, promptLang) || !surfaceReady(pos, answer, answerLang)) continue;
 
     const slot: SlotWord = {
@@ -248,9 +313,13 @@ export function listGrammarCandidates(
     const pos = normalizePos(entry.pos);
     if (!pos) continue;
     const meta = grammarForEntry(grammar, entry);
-    const prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos));
-    const answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos));
+    const sem = meta?.sem as Sem[] | undefined;
+    const animate = pos === "noun" && isAnimateSem(sem);
+    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }));
+    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }));
     if (!prompt || !answer) continue;
+    if (pos === "noun" && promptLang === "pl") prompt = repairPlNounAcc(prompt, animate);
+    if (pos === "noun" && answerLang === "pl") answer = repairPlNounAcc(answer, animate);
     if (!surfaceReady(pos, prompt, promptLang) || !surfaceReady(pos, answer, answerLang)) continue;
     out.push(entry);
   }

@@ -220,6 +220,10 @@ describe("dynamic sentence generation", () => {
       ["zh", "adj:pl-103:de-49", "房子很大。"],
       ["en", "vt:de-150:pl-334:de-328", "The child reads the book."],
       ["zh", "vt:de-150:pl-334:de-328", "孩子读书。"],
+      ["pl", "vt:de-150:de-108:custom-cat", "Dziecko widzi kota."],
+      ["pl", "vt:de-150:de-108:de-530", "Dziecko widzi przyjaciela."],
+      ["de", "vt:de-150:de-108:de-757", "Das Kind sieht den Hund."],
+      ["pl", "adj:de-417:pl-132", "Woda jest mała."],
     ];
     for (const [lang, id, expected] of cases) {
       const sentence = generate("en", lang, deck, stats).find((item) => item.id === id);
