@@ -1,5 +1,5 @@
 import { languageByCode, type LangCode } from "../lib/languages";
-import { closedClass, pickAdverb, pickPrep } from "./closedClass";
+import { closedClass, pickAdverb } from "./closedClass";
 import { finiteVerb } from "./morph";
 import { renderNp, renderPredAdj } from "./np";
 import type {
@@ -182,10 +182,13 @@ function renderClause(lang: LangCode, side: "prompt" | "answer", bits: ClauseBit
 
   let obj: string | null = null;
   if (bits.object) {
+    // Polish (and Russian) take genitive on the direct object under negation.
+    const objectRole =
+      bits.negated && (lang === "pl" || lang === "ru") ? "gen" : "acc";
     obj = renderNp(lang, {
       noun: bits.object,
       side,
-      role: "acc",
+      role: objectRole,
       number: "sg",
       attr: bits.objectAttr,
       animate: isAnimate(bits.object.sem),
@@ -203,8 +206,13 @@ function renderClause(lang: LangCode, side: "prompt" | "answer", bits: ClauseBit
     });
     if (!np) return null;
     if (lang === "ja") pp = `${np}${bits.pp.prepForm}`;
-    else if (lang === "zh") pp = `${bits.pp.prepForm}${np}`;
-    else pp = `${bits.pp.prepForm} ${np}`;
+    else if (lang === "zh") {
+      // 在房子里 — bare 在房子 is ungrammatical for static location.
+      pp =
+        bits.pp.prepForm === "在"
+          ? `${bits.pp.prepForm}${np}里`
+          : `${bits.pp.prepForm}${np}`;
+    } else pp = `${bits.pp.prepForm} ${np}`;
   }
 
   return assembleVerbal(lang, {
@@ -761,13 +769,20 @@ export function composeOne(
     let ppPrompt: ClauseBits["pp"];
     let ppAnswer: ClauseBits["pp"];
     if (kind === "vt-pp") {
+      // Prefer real place nouns so locative/dative PPs stay coherent.
       const place = pick(
-        nouns.filter((n) => n.id !== subject.id && n.id !== object.id && (n.sem.includes("place") || n.sem.includes("thing"))),
+        nouns.filter((n) => n.id !== subject.id && n.id !== object.id && n.sem.includes("place")),
         rng,
       );
       if (!place) return null;
-      const prepP = pickPrep(promptLang, rng);
-      const prepA = closedClass(answerLang).prepositions.find((p) => p.key === prepP.key) ?? pickPrep(answerLang, rng);
+      // Only shared prep keys so prompt/answer stay aligned (no EN "with" → PL "na").
+      const promptPreps = closedClass(promptLang).prepositions;
+      const answerPreps = closedClass(answerLang).prepositions;
+      const shared = promptPreps.filter((p) => answerPreps.some((a) => a.key === p.key));
+      if (shared.length === 0) return null;
+      const prepP = shared[Math.floor(rng() * shared.length)]!;
+      const prepA = answerPreps.find((p) => p.key === prepP.key);
+      if (!prepA) return null;
       ppPrompt = { prepForm: prepP.form, prepCase: prepP.case, noun: place };
       ppAnswer = { prepForm: prepA.form, prepCase: prepA.case, noun: place };
     }
@@ -868,6 +883,8 @@ export function composeOne(
     const subjectM = pickSubjectFor(verbM);
     const subjectD = pickSubjectFor(verbD);
     if (!subjectM || !subjectD) return null;
+    // Avoid tautologies like "the cat sleeps because the cat sleeps".
+    if (subjectM.id === subjectD.id && verbM.id === verbD.id) return null;
     const main = clauseFromParts(subjectM, { verb: verbM });
     const dep = clauseFromParts(subjectD, { verb: verbD });
     const prompt = renderSubordinate(promptLang, "prompt", main, marker, dep);
@@ -899,11 +916,12 @@ export function composeOne(
       verbs.filter((v) => v.valence === "vt" || Boolean(v.object)),
       rng,
     );
-    const object = pick(
-      nouns.filter((n) => n.id !== headNoun?.id),
-      rng,
+    if (!headNoun || !relVerb || !mainVerb) return null;
+    const objectCandidates = nouns.filter(
+      (n) => n.id !== headNoun.id && overlaps(n.sem, mainVerb.object ?? ["thing", "person", "animal", "food", "drink", "readable", "place"]),
     );
-    if (!headNoun || !relVerb || !mainVerb || !object) return null;
+    const object = pick(objectCandidates, rng);
+    if (!object) return null;
     // Only languages with solid relative support
     if (!["en", "de", "pl"].includes(promptLang) || !["en", "de", "pl"].includes(answerLang)) return null;
     const headBits = clauseFromParts(headNoun, { verb: relVerb });

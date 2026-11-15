@@ -255,10 +255,11 @@ export const CLOSED_CLASS: Record<LangCode, ClosedClass> = {
     copulaPast: "был",
     copulaFuture: "будет",
     adverbs: ["часто", "сейчас", "здесь"],
+    // Locative PPs only when surface.loc exists (otherwise skipped). No "with":
+    // Russian с takes instrumental, which we do not invent.
     prepositions: [
       { key: "in", form: "в", case: "loc" },
       { key: "on", form: "на", case: "loc" },
-      { key: "with", form: "с", case: "acc" },
     ],
     pronouns: { he: "он", she: "она", it: "оно", they: "они" },
     space: true,
@@ -303,10 +304,8 @@ export const CLOSED_CLASS: Record<LangCode, ClosedClass> = {
     qParticle: "吗",
     copula: "是",
     adverbs: ["经常", "现在", "这里"],
-    prepositions: [
-      { key: "in", form: "在", case: "nom" },
-      { key: "with", form: "和", case: "nom" },
-    ],
+    // Locative 在…里 only; comitative 和 is not a safe pre-verbal PP here.
+    prepositions: [{ key: "in", form: "在", case: "nom" }],
     pronouns: { he: "他", she: "她", it: "它", they: "他们" },
     space: false,
     period: "。",

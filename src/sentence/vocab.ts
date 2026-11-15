@@ -171,11 +171,32 @@ export function inferSurface(
   return { lemma, m: lemma, f: lemma, n: lemma };
 }
 
-function mergeSurface(base: LangSurface | undefined, inferred: LangSurface | null): LangSurface | null {
+/** Prefer a study-card lemma when grammar.json copied an English gloss (e.g. pl lemma "see"). */
+function preferLemma(lang: LangCode, grammarLemma: string | undefined, inferredLemma: string | undefined): string {
+  const g = grammarLemma?.trim() || "";
+  const inferred = inferredLemma?.trim() || "";
+  if (lang === "pl") {
+    const looksPl = (w: string) => /[ąćęłńóśźż]/i.test(w) || /(?:ować|[aeiy]ć)$/i.test(w);
+    if (inferred && looksPl(inferred)) return inferred;
+    if (g && looksPl(g)) return g;
+    return inferred || g;
+  }
+  if (lang === "zh") {
+    // Prefer the deck citation (看) over a divergent grammar lemma (见).
+    return inferred || g;
+  }
+  return g || inferred;
+}
+
+function mergeSurface(
+  base: LangSurface | undefined,
+  inferred: LangSurface | null,
+  lang?: LangCode,
+): LangSurface | null {
   if (!base && !inferred) return null;
   if (!base) return inferred;
   if (!inferred) return base;
-  const lemma = base.lemma || inferred.lemma;
+  const lemma = preferLemma(lang ?? "en", base.lemma, inferred.lemma);
   const preferInferredF = isBrokenPlAdjFeminine(lemma, base.f) && Boolean(inferred.f);
   return {
     ...inferred,
@@ -267,8 +288,8 @@ export function buildVocabIndex(
     // Animacy comes only from curated grammar tags — do not infer it from the
     // open default sem list, or inanimates like dom would get *doma.
     const animate = pos === "noun" && isAnimateSem(meta?.sem);
-    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }));
-    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }));
+    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }), promptLang);
+    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }), answerLang);
     if (!prompt || !answer) continue;
     if (pos === "noun" && promptLang === "pl") prompt = repairPlNounAcc(prompt, animate);
     if (pos === "noun" && answerLang === "pl") answer = repairPlNounAcc(answer, animate);
@@ -315,8 +336,8 @@ export function listGrammarCandidates(
     const meta = grammarForEntry(grammar, entry);
     const sem = meta?.sem as Sem[] | undefined;
     const animate = pos === "noun" && isAnimateSem(sem);
-    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }));
-    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }));
+    let prompt = mergeSurface(meta?.langs[promptLang], inferSurface(entry, promptLang, pos, { animate }), promptLang);
+    let answer = mergeSurface(meta?.langs[answerLang], inferSurface(entry, answerLang, pos, { animate }), answerLang);
     if (!prompt || !answer) continue;
     if (pos === "noun" && promptLang === "pl") prompt = repairPlNounAcc(prompt, animate);
     if (pos === "noun" && answerLang === "pl") answer = repairPlNounAcc(answer, animate);

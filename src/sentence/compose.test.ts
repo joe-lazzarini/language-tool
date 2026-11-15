@@ -109,9 +109,14 @@ describe("compositional sentence generator", () => {
       ["pl", /\bdoma\b/i],
       ["pl", /\bwielkia\b/i],
       ["pl", /\bdużya\b/i],
+      ["pl", /\bnie (widzi|czyta) (dom|książkę|dziecko)\b/i],
+      // Avoid JS \\b pitfalls with Polish letters (ł is non-\\w).
+      ["pl", /Dziecko (spał|czytał|widział)(?![a-ząćęłńóśźż])/i],
       ["de", /\bsieht der Hund\b/i], // object must be den Hund, not der Hund
+      ["de", /\b(der|die|das|den) (groß|klein) [A-ZÄÖÜ]/u],
       ["en", /\bthe cat sleep\./i],
       ["en", /\ba sleeps\b/i],
+      ["en", /\bdoes not (sleeps|reads|sees)\b/i],
     ];
     for (const lang of ["en", "pl", "de"] as LangCode[]) {
       const index = indexFor("en", lang);
@@ -123,11 +128,15 @@ describe("compositional sentence generator", () => {
           expect(sentence.accepted[0]?.length).toBeGreaterThan(0);
           expect(sentence.prompt.length).toBeGreaterThan(0);
           for (const [, re] of badPatterns.filter(([code]) => code === lang)) {
-            expect(sentence.accepted[0]).not.toMatch(re);
+            expect(sentence.accepted[0], `${lang} ${sentence.id}`).not.toMatch(re);
           }
           // German masculine accusative object in simple vt
           if (lang === "de" && sentence.structure === "vt" && sentence.wordIds[2] === "de-757") {
             expect(sentence.accepted[0]).toMatch(/den Hund/);
+          }
+          // Statement (not question) must not put nominative article on the object.
+          if (lang === "de" && !sentence.accepted[0]!.endsWith("?") && /\bsieht der Hund\b/i.test(sentence.accepted[0]!)) {
+            expect.fail(sentence.accepted[0]);
           }
         }
       }
@@ -176,6 +185,56 @@ describe("compositional sentence generator", () => {
     expect(attrPl || coordDe || subPl).toBeTruthy();
   });
 
+  it("uses genitive of negation for Polish direct objects", () => {
+    const index = indexFor("en", "pl");
+    const samples: string[] = [];
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const sentence = composeOne(index, "en", "pl", "neg-vt", mulberry(seed), 3);
+      if (sentence) samples.push(sentence.accepted[0]!);
+    }
+    expect(samples.length).toBeGreaterThan(0);
+    for (const text of samples) {
+      expect(text).toMatch(/\bnie\b/);
+      // Accusative left after nie is wrong for these study nouns.
+      expect(text).not.toMatch(/\bnie (widzi|czyta) (dom|książkę|dziecko)\b/i);
+    }
+    expect(samples.some((text) => /\bnie widzi domu\b/i.test(text))).toBe(true);
+    expect(samples.some((text) => /\bnie czyta książki\b/i.test(text))).toBe(true);
+  });
+
+  it("aligns PP prepositions across the language pair and keeps PL locative", () => {
+    const index = indexFor("en", "pl");
+    const samples: Array<{ prompt: string; answer: string }> = [];
+    for (let seed = 1; seed <= 80; seed += 1) {
+      const sentence = composeOne(index, "en", "pl", "vt-pp", mulberry(seed), 3);
+      if (sentence) samples.push({ prompt: sentence.prompt, answer: sentence.accepted[0]! });
+    }
+    expect(samples.length).toBeGreaterThan(0);
+    for (const { prompt, answer } of samples) {
+      // Shared keys only: in/on (not EN-only with/at mapped to a random PL prep).
+      if (/\bwith\b/i.test(prompt) || /\bat\b/i.test(prompt)) {
+        throw new Error(`unaligned prep prompt=${prompt} answer=${answer}`);
+      }
+      if (/\bin the house\b/i.test(prompt)) expect(answer).toMatch(/\bw domu\b/i);
+      if (/\bon the house\b/i.test(prompt)) expect(answer).toMatch(/\bna domu\b/i);
+    }
+  });
+
+  it("forms Polish past for widzieć after lemma repair", () => {
+    const index = indexFor("en", "pl");
+    const samples: string[] = [];
+    for (let seed = 1; seed <= 80; seed += 1) {
+      const sentence = composeOne(index, "en", "pl", "past-vt", mulberry(seed), 4);
+      if (sentence?.wordIds.includes("de-108")) samples.push(sentence.accepted[0]!);
+    }
+    expect(samples.length).toBeGreaterThan(0);
+    expect(samples.some((text) => /\b(widział|widziała|widziało)\b/.test(text))).toBe(true);
+    // Neuter subject past agrees.
+    for (const text of samples.filter((t) => /\bDziecko\b/.test(t))) {
+      expect(text).toMatch(/\bwidziało\b/);
+    }
+  });
+
   it("covers all language packs with at least basic clauses", () => {
     for (const lang of LANG_CODES) {
       const index = indexFor("en", lang);
@@ -194,10 +253,20 @@ describe("grammar-aware grading", () => {
     expect(isCorrectSentence("Das Kind sieht den Hund.", ["Das Kind sieht den Hund."], "de", "en")).toBe(true);
   });
 
+  it("rejects accusative after Polish negation when genitive is required", () => {
+    expect(isCorrectSentence("Kot nie widzi dom.", ["Kot nie widzi domu."], "pl", "en")).toBe(false);
+    expect(isCorrectSentence("Kot nie widzi domu.", ["Kot nie widzi domu."], "pl", "en")).toBe(true);
+    expect(isCorrectSentence("Dziecko nie czyta książkę.", ["Dziecko nie czyta książki."], "pl", "en")).toBe(false);
+    expect(isCorrectSentence("Dziecko nie czyta książki.", ["Dziecko nie czyta książki."], "pl", "en")).toBe(true);
+  });
+
   it("rejects wrong conjugation / agreement", () => {
     expect(isCorrectSentence("The cat sleep.", ["The cat sleeps."], "en", "pl")).toBe(false);
     expect(isCorrectSentence("Dom jest duża.", ["Dom jest duży."], "pl", "en")).toBe(false);
     expect(isCorrectSentence("Dom jest duży.", ["Dom jest duży."], "pl", "en")).toBe(true);
+    expect(isCorrectSentence("Kot spała.", ["Kot spał."], "pl", "en")).toBe(false);
+    expect(isCorrectSentence("Dziecko spał.", ["Dziecko spało."], "pl", "en")).toBe(false);
+    expect(isCorrectSentence("Der groß Hund schläft.", ["Der große Hund schläft."], "de", "en")).toBe(false);
   });
 
   it("accepts free word order for Polish and Russian", () => {

@@ -232,6 +232,54 @@ export function plLocative(lemma: string, gender: Gender): string | null {
 }
 
 /**
+ * Polish genitive singular — needed for genitive-of-negation on direct objects.
+ * Returns null when the pattern is unsafe rather than guessing.
+ */
+export function plGenitive(lemma: string, gender: Gender, animate = false): string | null {
+  const lower = lemma.toLowerCase();
+  const irregular: Record<string, string> = {
+    pies: "psa",
+    kot: "kota",
+    dom: "domu",
+    dziecko: "dziecka",
+    książka: "książki",
+    woda: "wody",
+    przyjaciel: "przyjaciela",
+    człowiek: "człowieka",
+    ojciec: "ojca",
+    brat: "brata",
+    mąż: "męża",
+    bóg: "boga",
+    stół: "stołu",
+    pokój: "pokoju",
+    koń: "konia",
+    nauczyciel: "nauczyciela",
+  };
+  if (irregular[lower]) return irregular[lower]!;
+  if (gender === "f" && lower.endsWith("a")) {
+    const stem = lemma.slice(0, -1);
+    const last = stem.slice(-1).toLowerCase();
+    // Soft stem / velar → -i; otherwise -y.
+    if (last === "k" || last === "g" || stem.toLowerCase().endsWith("ch")) return `${stem}i`;
+    return `${stem}y`;
+  }
+  if (gender === "n" && (lower.endsWith("o") || lower.endsWith("e") || lower.endsWith("um"))) {
+    // dziecko is irregular above; productive neuters in -o → -a are rare/unsafe.
+    return null;
+  }
+  if (gender === "m" && animate) {
+    if (lower.endsWith("iec")) return `${lemma.slice(0, -3)}ca`;
+    if (lower.endsWith("ek")) return `${lemma.slice(0, -2)}ka`;
+    return `${lemma}a`;
+  }
+  if (gender === "m") {
+    // Common inanimate masculine genitive in -u (domu, stołu); skip softer patterns.
+    if (/[bcdfghjklmnprstwxz]$/i.test(lower)) return `${lemma}u`;
+  }
+  return null;
+}
+
+/**
  * Polish past 3rd person. Aspect is not fully modeled; uses imperfective-style -ł forms.
  * Returns null when the infinitive pattern is unfamiliar.
  */
@@ -416,6 +464,8 @@ export function nounHead(
   }
   if (role === "gen") {
     if (surface.gen) return surface.gen;
+    if (lang === "pl") return plGenitive(lemma, gender, opts.animate === true);
+    // Russian and others: skip rather than invent genitive.
     return null;
   }
   return lemma;
@@ -460,7 +510,11 @@ export function finiteVerb(
       const perfect = dePerfect(lemma, surface.fin);
       return perfect ? { form: perfect, alts } : null;
     }
-    if (lang === "zh" && lemma) return { form: `${lemma}了`, alts };
+    if (lang === "zh") {
+      // Prefer the finite citation (看) over a divergent grammar lemma (见).
+      const base = surface.fin?.trim() || lemma;
+      return base ? { form: `${base}了`, alts } : null;
+    }
     if (lang === "ja" && surface.fin) {
       // Only accept explicit past metadata; do not invent た-forms.
       return null;
