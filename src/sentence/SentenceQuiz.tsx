@@ -13,8 +13,15 @@ import {
   type LangCode,
 } from "../lib/languages";
 import type { Entry } from "../types";
-import { isCorrectSentence } from "./check";
-import { generateSentences, MIN_READY_SENTENCES, sampleSentences, SENTENCE_ROUND, unlockHint } from "./generate";
+import { gradeSentence, type GradePart } from "./check";
+import {
+  generateSentences,
+  MIN_READY_SENTENCES,
+  progressFromStats,
+  sampleSentences,
+  SENTENCE_ROUND,
+  unlockHint,
+} from "./generate";
 import { loadGrammar, loadSentencePack } from "./load";
 import { sentenceRows, type SentenceWordRow } from "./rows";
 import type { GrammarFile, PracticeSentence, SentencePack } from "./types";
@@ -139,10 +146,12 @@ export function SentenceQuiz({
   const [phase, setPhase] = useState<Phase>("lobby");
   const [round, setRound] = useState<PracticeSentence[]>([]);
   const [previousIds, setPreviousIds] = useState<Set<string>>(new Set());
+  const [previousStructures, setPreviousStructures] = useState<Set<string>>(new Set());
   const [index, setIndex] = useState(0);
   const [input, setInput] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [correct, setCorrect] = useState<boolean | null>(null);
+  const [gradeParts, setGradeParts] = useState<GradePart[] | null>(null);
   const [results, setResults] = useState<{ sentence: PracticeSentence; correct: boolean; given: string }[]>([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -178,8 +187,9 @@ export function SentenceQuiz({
 
   const sentences = useMemo(() => {
     if (!vocab || !promptPack || !answerPack) return [];
-    return generateSentences(vocab, from, promptPack, to, answerPack);
-  }, [vocab, promptPack, answerPack, from, to]);
+    const progress = progressFromStats(vocab, promptStats, answerStats);
+    return generateSentences(vocab, from, promptPack, to, answerPack, progress);
+  }, [vocab, promptPack, answerPack, from, to, promptStats, answerStats]);
 
   const rows = useMemo(() => {
     if (!grammar) return [];
@@ -201,13 +211,15 @@ export function SentenceQuiz({
 
   function start() {
     if (sentences.length < MIN_READY_SENTENCES) return;
-    const next = sampleSentences(sentences, SENTENCE_ROUND, Math.random, previousIds);
+    const next = sampleSentences(sentences, SENTENCE_ROUND, Math.random, previousIds, previousStructures);
     setPreviousIds(new Set(next.map((item) => item.id)));
+    setPreviousStructures(new Set(next.map((item) => item.structure)));
     setRound(next);
     setIndex(0);
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setGradeParts(null);
     setResults([]);
     setDone(false);
     setPhase("round");
@@ -235,15 +247,18 @@ export function SentenceQuiz({
 
   function check(given = input) {
     if (!sentence || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
-    const ok = isCorrectSentence(given, sentence.accepted, to, from);
-    setCorrect(ok);
+    const grade = gradeSentence(given, sentence.accepted, to, from);
+    setCorrect(grade.correct);
+    setGradeParts(grade.correct ? null : grade.parts);
     setRevealed(true);
-    setResults((prev) => [...prev, { sentence, correct: ok, given: given.trim() }]);
+    setResults((prev) => [...prev, { sentence, correct: grade.correct, given: given.trim() }]);
   }
 
   function skip() {
     if (!sentence || revealed) return;
     setCorrect(false);
+    // Skip with no typed answer: show the reference without a full-token mismatch highlight.
+    setGradeParts(null);
     setRevealed(true);
     setResults((prev) => [...prev, { sentence, correct: false, given: input.trim() }]);
   }
@@ -257,6 +272,7 @@ export function SentenceQuiz({
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setGradeParts(null);
   }
 
   nextRef.current = next;
@@ -386,7 +402,25 @@ export function SentenceQuiz({
           {revealed && (
             <div className="feedback" role="status">
               {correct ? <p className="ok-text">Correct</p> : <p className="bad-text">Incorrect</p>}
-              <AnswerReveal answers={sentence.accepted.map((text) => ({ text }))} />
+              {gradeParts && !correct ? (
+                <div className="expected">
+                  <span>Expected</span>
+                  <p className="sentence-diff" lang={languageByCode(to).locale}>
+                    {gradeParts.map((part, i) => (
+                      <span key={`${part.text}-${i}`} className={part.ok ? "diff-ok" : "diff-bad"}>
+                        {part.text}
+                        {i < gradeParts.length - 1 && to !== "zh" && to !== "ja" ? " " : ""}
+                      </span>
+                    ))}
+                    {to === "zh" || to === "ja" ? "。" : "."}
+                  </p>
+                  {sentence.accepted.length > 1 ? (
+                    <AnswerReveal answers={sentence.accepted.slice(1).map((text) => ({ text }))} />
+                  ) : null}
+                </div>
+              ) : (
+                <AnswerReveal answers={sentence.accepted.map((text) => ({ text }))} />
+              )}
             </div>
           )}
         </article>
@@ -457,8 +491,9 @@ export function SentenceQuiz({
         <p className="eyebrow">Sentence quiz</p>
         <h1>{pairLabel(from, to)}</h1>
         <p className="lede">
-          Sentences are built from study words you know on both sides that are not weak. Two correct answers
-          in a row, or a mark here, counts as knowing the word. Weak words stay out until they improve.
+          Sentences are composed from study words you know on both sides that are not weak — structure
+          varies with your vocabulary size and accuracy. Two correct answers in a row, or a mark here,
+          counts as knowing the word. Weak words stay out until they improve.
         </p>
       </header>
       <section className="panel">

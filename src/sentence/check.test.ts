@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldSentence, isCorrectSentence } from "./check";
+import { foldSentence, gradeSentence, isCorrectSentence } from "./check";
 import { articleChoiceFlexible, stripArticlesForCompare } from "./articles";
 
 describe("isCorrectSentence", () => {
@@ -70,5 +70,16 @@ describe("isCorrectSentence", () => {
   it("strips English articles for flexible compare", () => {
     expect(stripArticlesForCompare("the cat sleeps", "en")).toBe("cat sleeps");
     expect(stripArticlesForCompare("a cat sleeps", "en")).toBe("cat sleeps");
+  });
+
+  it("rejects wrong morphology and highlights the bad token", () => {
+    expect(isCorrectSentence("Das Kind sieht der Hund.", german.slice(0, 0).concat(["Das Kind sieht den Hund."]), "de", "en")).toBe(false);
+    const grade = gradeSentence("Kot spi.", ["Kot śpi."], "pl");
+    expect(grade.correct).toBe(false);
+    expect(grade.parts.some((part) => !part.ok)).toBe(true);
+  });
+
+  it("accepts Polish free word order with correct case forms", () => {
+    expect(isCorrectSentence("Śpi kot.", ["Kot śpi."], "pl")).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
-import { generateSentences, unlockHint } from "./generate";
+import { generateSentences, progressFromStats, unlockHint } from "./generate";
 import { loadGrammar, loadSentencePack } from "./load";
 import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab";
 
@@ -43,7 +43,8 @@ export function useSentenceStatus(
         const answerStats = read(from, to);
         const candidates = listGrammarCandidates(studyEntries, grammar, from, to);
         const index = buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
-        const ready = generateSentences(index, from, promptPack, to, answerPack).length;
+        const progress = progressFromStats(index, promptStats, answerStats);
+        const ready = generateSentences(index, from, promptPack, to, answerPack, progress).length;
         setStatus({
           loading: false,
           error: null,
