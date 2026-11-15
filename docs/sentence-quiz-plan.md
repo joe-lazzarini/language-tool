@@ -3,11 +3,11 @@
 Plan for two related additions to Słówka:
 
 1. Remember how the user does on each word, derive which words they know, and let study and quiz focus on weak words.
-2. A separate sentence quiz that builds short, grammatical sentences from those known words and asks for a translation in the other selected language.
+2. A separate sentence quiz that **composes** grammatical sentences from those known words (phrase-structure / feature-based rules, not three fixed frames) and asks for a translation in the other selected language.
 
 Sentence quiz stays in its own folder, screen, and home card. The existing quiz gains one grading callback and a focus control. Card selection for weak words lives next to the accuracy data, not inside the old session component.
 
-No paid translation or generation API. Templates and inflected forms ship as static JSON and load in the browser when needed.
+No paid translation or generation API. Morphology rules, closed-class function words, and inflection tables ship in the client. Study-word surfaces still load from `grammar.json` when needed.
 
 ## How accuracy is stored
 
@@ -88,7 +88,7 @@ The sentence screen can mark or unmark a lexicon word for one side of the curren
 
 One correct answer is not enough. A later miss clears the two-in-a-row condition, so a word stops being known until it is solid again. The manual bit stays until the user clears it, including if later attempts are wrong. Lifetime counts stay either way. They feed weak-word focus, not the known bit.
 
-For the selected pair, “known in Polish” means known on the direction that **answers** in Polish (`en_pl` when the other language is English). “Known in English” uses the opposite direction. Sentence quiz loads those two directions and no others. A word the user knows only on a different pair is not treated as known here, because that document is not the one this pair practices.
+For the selected pair, “known in Polish” means known on the direction that **answers** in Polish (`en_pl` when the other language is English). “known in English” uses the opposite direction. Sentence quiz loads those two directions and no others. A word the user knows only on a different pair is not treated as known here, because that document is not the one this pair practices.
 
 A sentence-lexicon item counts as known on a side when the lexicon id itself, or any deck id listed for that item, is known on that direction. Quiz progress on `pl-103` therefore unlocks the lexicon word `house` without a second id space.
 
@@ -113,40 +113,46 @@ The home hint shows how many cards in the current band are weak for this directi
 
 ### Unlock
 
-Sentence quiz unlocks for the current pair when the generator can build at least **4** distinct sentences from **eligible study words**. Eligible means: the card is in the current pair's study vocabulary (deck + add-a-word), it is **known** on both sides, it is **not weak** (<60% accuracy) on those sides, and it has enough part-of-speech / grammar metadata to fill a typed slot. Articles, the copula, Japanese particles, and Mandarin 很 are template grammar, not content words.
+Sentence quiz unlocks for the current pair when the generator can build at least **4** distinct sentences from **eligible study words**. Eligible means: the card is in the current pair's study vocabulary (deck + add-a-word), it is **known** on both sides, it is **not weak** (<60% accuracy) on those sides, and it has enough part-of-speech / grammar metadata to fill a typed slot. Articles, the copula, Japanese particles, Mandarin 很, conjunctions, prepositions, pronouns, and auxiliaries are **closed-class** template grammar, not content words.
 
 The home card shows how many eligible study words are ready on each side and whether 4 sentences can be built. When locked, it explains how many more known words / sentences are needed. Opening before unlock shows study nouns/verbs/adjectives with per-side known toggles. After unlock, a round asks for up to 8 sentences.
 
-### Generation
+### Generation (compositional)
 
-Content words come from the user's **actual study vocabulary** for the pair — not a fixed preset list. Grammatical **templates** stay in `public/data/sentences/<code>.json` (frames only). Slot-fill metadata lives in `public/data/sentences/grammar.json` (keyed by deck / custom word id, with concept fallback), plus runtime inference from card POS, citation forms, and gender contexts.
+Content words come from the user's **actual study vocabulary** for the pair — not a fixed preset list. Slot-fill metadata lives in `public/data/sentences/grammar.json` (keyed by deck / custom word id, with concept fallback), plus runtime inference from card POS, citation forms, and gender contexts. Per-language `public/data/sentences/<code>.json` files keep simple-clause frame strings for documentation / load compatibility; rendering is driven by the compositional engine.
 
-Frames:
+The generator (`src/sentence/compose.ts`) randomly composes sentences from building blocks so **structure varies**:
 
-| Frame | Shape | Example (English) |
-| --- | --- | --- |
-| `vi` | subject + intransitive verb | The cat sleeps. |
-| `vt` | subject + transitive verb + object | The child reads the book. |
-| `adj` | subject + copula + adjective | The house is big. |
+| Structure family | Examples |
+| --- | --- |
+| Simple clauses | subject + VI / VT / copula+adj (legacy shapes, still enumerated exhaustively for unlock) |
+| Attributive NP | “the big dog sees a small cat” with adjective–noun agreement |
+| Adjuncts | adverbs; prepositional phrases of place (case-governed where required) |
+| Polarity / mood | negation; yes/no questions (do-support, German V2 inversion, Polish *czy*, Mandarin 吗) |
+| Tense | present / past / future (PL past gender agreement; DE perfect/future when forms are reliable) |
+| Coordination | and / but / or between clauses |
+| Subordination | because / when / if (German verb-final in the subordinate clause) |
+| Relatives | who/that/which — solid for EN/PL/DE |
 
-In-memory indexes group eligible words by POS (`noun` / `verb` / `adjective`) for O(1) slot lookup. Template and word choice are randomized each round; the sampler avoids immediate sentence-id repeats when alternatives exist. Newly known (and non-weak) study words appear as soon as they have enough metadata for a slot.
+Difficulty and length scale with eligible known-word count and mean accuracy (short simple clauses early; more clauses and richer structures as the user progresses). The sampler avoids repeating the same **structure tag** on consecutive questions when alternatives exist.
 
-Agreement and articles are data / small renderers, not a full conjugator:
+Morphology must be correct in both the prompt and the expected answer(s): declension (case/number/gender for PL/RU/DE, including preposition-governed cases and animacy; German articles + attributive adjective endings), conjugation (person/number/tense; irregular tables where needed), agreement (subject–verb, adjective–noun, PL/RU past gender), and word order (German V2 / verb-final subordinates, question inversion, zh/ja particles). When a word lacks reliable inflection data for a required slot, that word is **excluded** from the slot rather than guessed.
 
-- Nouns need a lemma and, for article languages, gender (from grammar.json, Wiktionary context on the card, or safe heuristics). Accusative overrides live in grammar when citation ≠ needed form.
-- Verbs need a finite 3sg (or Mandarin citation / Japanese polite) form in grammar or by inference (English *-s*, regular Polish patterns, Mandarin lemma-as-finite).
-- Adjectives store or infer predicative *m/f/n* (German predicative is uninflected; Mandarin has no inflection).
-- Mandarin (`zh`): `articles: false`, no inflection; frames are `{subject}{verb}。` / `{subject}{verb}{object}。` / `{subject}很{adj}。`.
-- Russian omits the present copula; Japanese keeps は / を / です with plain-form alts.
-- Words lacking required metadata for the pair are simply skipped for slots that need it.
+In-memory indexes group eligible words by POS (`noun` / `verb` / `adjective`) for O(1) slot lookup. Function words come from `src/sentence/closedClass.ts`.
 
-The old curated preset (`index.json` and per-language noun/verb/adj maps) is removed. Curated surface forms were folded into `grammar.json` where useful.
+Language coverage: all supported codes (`en`, `pl`, `de`, `es`, `fr`, `it`, `pt`, `nl`, `ru`, `ja`, `zh`), with quality prioritized for **PL / DE / EN**.
 
 ### Checking a translation
 
-The prompt is the canonical sentence in the prompt language. The answer language contributes one or more full sentences (canonical reference first, plus Japanese plain-form variants and listed alts). Reveal always shows the reference answer(s).
+The prompt is the canonical sentence in the prompt language. The answer language contributes one or more full sentences (canonical reference first, plus Japanese plain-form variants and listed alts). Reveal always shows the reference answer(s). On an incorrect answer, the UI **highlights which reference word(s) differ** from the typed attempt (wrong ending / wrong form) where token alignment is feasible.
 
-A typed answer is correct when, after folding, it equals one of those sentences — **except** when the prompt language has no articles (`articles: false`: Polish, Russian, Japanese, Mandarin) and the answer language has them. Then definite vs indefinite (and bare noun where natural) must not be marked wrong: articles are stripped for comparison only. Content words stay strict. EN→PL is unaffected. EN→DE (both have articles) stays strict.
+A typed answer is graded for **grammar**: wrong case, conjugation, or agreement fails. Legitimate variants still pass:
+
+- article flexibility from article-less prompt languages (PR #14 behavior): when the prompt has no articles and the answer language does, definite vs indefinite (and bare noun) are equivalent for compare only
+- free word order where the target language allows it (Polish, Russian) — same multiset of correctly inflected tokens
+- synonyms / alternate valid translations listed on the sentence
+- contractions (English)
+- case / punctuation / whitespace insensitivity; Japanese/Mandarin space folding; Russian `е`/`ё`
 
 Folding otherwise:
 
@@ -191,21 +197,23 @@ Accuracy:
 
 Sentences:
 
-- no preset `index.json`; language files are frames-only (including `zh.json`)
+- no preset `index.json`; language files remain frames-compatible; generation is compositional
 - generation uses only known, non-weak study words with enough grammar metadata
 - a newly known custom word appears in generated sentences
-- rounds vary and avoid immediate repeats when possible
+- rounds vary structure and avoid immediate structure/id repeats when possible
 - unlock at 4 distinct sentences; locked state explains missing words
 - golden EN/PL/DE/ZH renderings from study ids (including Mandarin 很 / no inflection)
+- multi-seed smoke tests: no ungrammatical PL/DE/EN outputs for known bad patterns; structural variety; difficulty scaling
+- grading rejects wrong case / conjugation / agreement; accepts free word order (PL/RU), contractions, and article flexibility; reveal highlights mismatched tokens
 - article equivalence: PL→EN and PL→DE accept a/the/der/die/…/bare; EN→PL unaffected; EN→DE stays strict; ZH→EN flexible
 - answer check still accepts case, spacing, missing final period, Japanese plain form, Russian `е`/`ё`
 
-Existing unit tests stay as they are.
+Existing unit tests stay as they are. CI requires `tsc -b`, the full Vitest suite, and `npm run build`.
 
 ## UI files
 
 - `src/accuracy/` — stats, local document, debounced remote write, hook
-- `src/sentence/` — loaders, generator, checker, home card, sentence screen
+- `src/sentence/` — loaders, vocab index, closed-class lexicon, morphology, compositional composer, checker + diff highlight, home card, sentence screen
 - `src/App.tsx` — focus control, `selectCards` at start, `onGraded` on the session, sentence card and `#sentence` screen
 - `src/types.ts` — `focus` on settings
 - `firestore.rules` — accuracy path

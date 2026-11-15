@@ -9,7 +9,7 @@ One concept per card. Citation form for open-class words: nominative singular no
 - **Quiz mode** (default): type every answer; skip counts as incorrect; score and missed-word review at the end.
 - **Study mode**: type to check, or reveal the answer without scoring.
 - **Focus:** All, or Weak words. Weak words are the ones you miss in this direction (lifetime or recent accuracy under 60%). A short round uses those first and fills with new cards when there are not enough. Choosing every card in the band keeps only the weak ones. With no misses recorded yet, the round still uses the whole band.
-- **Sentence quiz:** a separate card and screen (`#sentence`). Once you know enough words on both sides of the pair, it builds short sentences from those words and asks you to translate them. Two correct answers in a row in this direction count as knowing a word. You can also mark a sentence word by hand. Articles and other grammar stay in the template, so the sentences stay grammatical offline.
+- **Sentence quiz:** a separate card and screen (`#sentence`). Once you know enough words on both sides of the pair, it **composes** grammatical sentences from those words (varying structure with your vocabulary size and accuracy) and asks you to translate them. Two correct answers in a row in this direction count as knowing a word. You can also mark a sentence word by hand. Function words and morphology rules stay in the client, so the sentences stay grammatical offline.
 - **Any two different languages.** Prompt and answer each have a menu, plus a swap button. The pair is saved in this browser. A new visit starts at English → Polish.
 - Frequency bands (first 100 / 250 / 500 / all, plus later slices) and round sizes of 10, 20, 50, or the whole band. When the pair includes Polish or German, that side’s frequency list decides which cards and which order. Other pairs share one concept list, ordered by the best Polish or German rank those cards have.
 - **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. Mandarin also accepts pinyin with tone marks, tone numbers (*ni3 hao3*), or no tones, ignoring spaces. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
@@ -44,11 +44,11 @@ The app is a Vite + React static site. GitHub Actions builds `dist/` and publish
 
 ## Sentence quiz
 
-Open **Sentence quiz** on the home screen. Sentences are built from **your study vocabulary** for the pair (deck cards plus add-a-word), restricted to words you know on both sides that are not weak. Four distinct sentences unlock a round of up to eight. The home card explains how many more eligible words you need when locked.
+Open **Sentence quiz** on the home screen. Sentences are composed from **your study vocabulary** for the pair (deck cards plus add-a-word), restricted to words you know on both sides that are not weak. Structure varies — attributive adjectives, coordination, subordination, negation, questions, tense, prepositional phrases — and scales with how many eligible words you know and how accurate you are. Four distinct sentences unlock a round of up to eight. The home card explains how many more eligible words you need when locked.
 
 A word counts as known when the last two graded answers in that direction were correct, or you marked it on the sentence screen. Weak means under 60% accuracy. Quiz and study checks are graded attempts; a quiz skip counts as a miss; a study reveal does not. Sentence-quiz answers do not change word accuracy.
 
-Templates live in `public/data/sentences/<code>.json` (frames only). Slot metadata is in `grammar.json`, with runtime inference from POS / gender / citation forms when possible. Words without enough metadata are skipped for slots that need it. Mandarin has no articles and no inflection (`很` before adjectives). When translating from a language without articles (Polish, Russian, Japanese, Mandarin) into one that has them, definite vs indefinite (and bare noun) is not marked wrong; the reference answer still shows on reveal. Everything else stays strict.
+Closed-class function words live in the client. Slot metadata is in `grammar.json`, with runtime morphology for agreement and inflection when reliable; words without enough data are skipped for slots that need that form. Grading checks declension/conjugation/agreement, accepts free word order where natural (PL/RU), article flexibility from article-less prompts, and highlights mismatched words on reveal. Mandarin has no articles and no inflection (`很` before adjectives).
 
 ## Continuous integration
 
@@ -291,5 +291,5 @@ src/lib/translate.ts          deck, then Wiktionary, then MyMemory
 src/lib/customWords.ts        local store and account merge
 src/lib/match.ts              answer checking
 src/accuracy/                 per-direction accuracy, known derivation, weak-card selection
-src/sentence/                 offline sentence quiz (templates, checker, screen)
+src/sentence/                 offline sentence quiz (composer, morphology, checker, screen)
 ```

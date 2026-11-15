@@ -1,5 +1,7 @@
 import { languageByCode, type LangCode } from "../lib/languages";
-import type { Gender, LangSurface, SentenceFrame, SentencePack } from "./types";
+import type { Gender, LangSurface, SentencePack } from "./types";
+
+type LegacyFrame = "vi" | "vt" | "adj";
 
 function capitalize(text: string, lang: LangCode): string {
   const chars = [...text];
@@ -108,7 +110,7 @@ export function verbForm(surface: LangSurface): { form: string; alts: string[] }
 export function renderFrame(
   pack: SentencePack,
   lang: LangCode,
-  frame: SentenceFrame,
+  frame: LegacyFrame,
   slots: Record<string, string>,
 ): string | null {
   const text = fill(pack.frames[frame], slots);
@@ -118,7 +120,7 @@ export function renderFrame(
 export function renderAccepted(
   pack: SentencePack,
   lang: LangCode,
-  frame: SentenceFrame,
+  frame: LegacyFrame,
   slots: Record<string, string>,
   verbAlts: string[],
 ): string[] {

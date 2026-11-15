@@ -126,7 +126,12 @@ function allKnownStats(ids: string[]): Map<string, WordStat> {
 
 function generate(prompt: LangCode, answer: LangCode, entries: Entry[], stats: Map<string, WordStat>) {
   const index = buildVocabIndex(entries, grammar, prompt, answer, stats, stats);
-  return generateSentences(index, prompt, packs[prompt], answer, packs[answer]);
+  let seed = 42;
+  const rng = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+  return generateSentences(index, prompt, packs[prompt], answer, packs[answer], undefined, rng);
 }
 
 describe("dynamic sentence generation", () => {
@@ -226,8 +231,10 @@ describe("dynamic sentence generation", () => {
       ["pl", "adj:de-417:pl-132", "Woda jest mała."],
     ];
     for (const [lang, id, expected] of cases) {
+      // Deterministic rng so the exhaustive basic pool is always present.
       const sentence = generate("en", lang, deck, stats).find((item) => item.id === id);
       expect(sentence?.accepted[0], `${lang} ${id}`).toBe(expected);
+      expect(sentence?.structure).toBeTruthy();
     }
   });
 
