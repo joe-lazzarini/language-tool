@@ -339,6 +339,119 @@ describe("Session advance shortcut", () => {
     expect(container.textContent).toContain("0 correct");
   });
 
+  describe("missed words summary", () => {
+    function missLabels(container: HTMLElement) {
+      return [...container.querySelectorAll(".misses li")].map((item) => ({
+        answer: item.querySelector("strong")?.textContent ?? "",
+        prompt: item.querySelector("span")?.textContent ?? "",
+        given: item.querySelector("em")?.textContent ?? "",
+      }));
+    }
+
+    function revealAndAdvance(container: HTMLElement, mode: Mode) {
+      act(() => {
+        buttonNamed(container, mode === "quiz" ? "Skip" : "Reveal").click();
+      });
+      releaseKey("Enter");
+      releaseKey(" ");
+      pressKey(" ");
+      releaseKey(" ");
+    }
+
+    it("lists every study reveal as missed, including the last card via rapid Space", () => {
+      const { container } = session("study");
+      revealAndAdvance(container, "study");
+      expect(prompt(container)).toBe("dog");
+      revealAndAdvance(container, "study");
+      expect(prompt(container)).toBe("bird");
+      act(() => {
+        buttonNamed(container, "Reveal").click();
+      });
+      releaseKey(" ");
+      pressKey(" ");
+      expect(container.textContent).toContain("Study complete");
+      expect(container.textContent).toContain("Missed (3)");
+      expect(missLabels(container)).toEqual([
+        { answer: "kot", prompt: "cat", given: "skipped" },
+        { answer: "pies", prompt: "dog", given: "skipped" },
+        { answer: "ptak", prompt: "bird", given: "skipped" },
+      ]);
+    });
+
+    it("keeps wrong typed answers and quiz skips on the summary after rapid Enter", () => {
+      const graded: { id: string; correct: boolean }[] = [];
+      const { container } = mount(
+        <Session
+          words={words}
+          mode="quiz"
+          from="en"
+          to="pl"
+          onExit={() => undefined}
+          onGraded={(id, correct) => graded.push({ id, correct })}
+        />,
+      );
+
+      setValue(answerInput(container), "nope");
+      pressKey("Enter", { target: answerInput(container) });
+      releaseKey("Enter");
+      pressKey("Enter");
+      releaseKey("Enter");
+
+      act(() => {
+        buttonNamed(container, "Skip").click();
+      });
+      releaseKey("Enter");
+      pressKey("Enter");
+      releaseKey("Enter");
+
+      setValue(answerInput(container), "zzz");
+      pressKey("Enter", { target: answerInput(container) });
+      releaseKey("Enter");
+      pressKey("Enter");
+      releaseKey("Enter");
+
+      expect(container.textContent).toContain("Quiz complete");
+      expect(container.textContent).toContain("0 / 3");
+      expect(container.textContent).toContain("Missed (3)");
+      expect(missLabels(container).map((item) => item.answer)).toEqual(["kot", "pies", "ptak"]);
+      expect(graded).toEqual([
+        { id: "cat", correct: false },
+        { id: "dog", correct: false },
+        { id: "bird", correct: false },
+      ]);
+    });
+
+    it("keeps an earlier miss when the same id is later answered correctly", () => {
+      const dup = [entry("same", "one", "jeden"), entry("same", "two", "dwa")];
+      const { container } = session("quiz", dup);
+      setValue(answerInput(container), "nope");
+      pressKey("Enter", { target: answerInput(container) });
+      releaseKey("Enter");
+      pressKey(" ");
+      releaseKey(" ");
+      setValue(answerInput(container), "dwa");
+      pressKey("Enter", { target: answerInput(container) });
+      releaseKey("Enter");
+      pressKey(" ");
+      expect(container.textContent).toContain("1 / 2");
+      expect(container.textContent).toContain("Missed (1)");
+      expect(missLabels(container)).toEqual([{ answer: "jeden", prompt: "one", given: "you: nope" }]);
+    });
+
+    it("shows the summary with graded misses when exiting early", () => {
+      const { container } = session("study", words);
+      act(() => {
+        buttonNamed(container, "Reveal").click();
+      });
+      act(() => {
+        buttonNamed(container, "Exit").click();
+      });
+      expect(container.textContent).toContain("Study complete");
+      expect(container.textContent).toContain("Missed (1)");
+      expect(missLabels(container)[0]?.answer).toBe("kot");
+    });
+  });
+
   it("does not grade or advance while a Chinese IME is composing", async () => {
     const { container } = session("quiz");
     const input = answerInput(container);
