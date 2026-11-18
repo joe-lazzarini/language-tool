@@ -57,8 +57,20 @@ function dedupeConcepts(entries: Entry[], from: LangCode, to: LangCode): Entry[]
   return [...kept.values(), ...customs];
 }
 
+/** Cache pair decks on the source array so EN↔PL swaps reuse both directions. */
+const pairDeckCache = new WeakMap<readonly Entry[], Map<string, Entry[]>>();
+
 export function entriesForPair(entries: Entry[], from: LangCode, to: LangCode): Entry[] {
   if (from === to) return [];
+  const dir = `${from}_${to}`;
+  let byDir = pairDeckCache.get(entries);
+  if (!byDir) {
+    byDir = new Map();
+    pairDeckCache.set(entries, byDir);
+  }
+  const cached = byDir.get(dir);
+  if (cached) return cached;
+
   const usable = entries.filter((entry) => hasForm(entry, from) && hasForm(entry, to));
   // A language that stores frequency ranks keeps that ranked deck (Polish list,
   // German list, …). Pairs with no ranks use every card that has both forms.
@@ -71,11 +83,13 @@ export function entriesForPair(entries: Entry[], from: LangCode, to: LangCode): 
     if (ranked.some((entry) => !entry.custom)) chosen = ranked;
   }
   if (chosen === usable) chosen = dedupeConcepts(chosen, from, to);
+  else chosen = [...chosen];
   chosen.sort((a, b) => {
     const delta = pairRank(a, from, to) - pairRank(b, from, to);
     if (delta !== 0) return delta;
     return a.id.localeCompare(b.id);
   });
+  byDir.set(dir, chosen);
   return chosen;
 }
 
