@@ -9,12 +9,8 @@ import { buildVocabIndex, listGrammarCandidates } from "./vocab";
 export type SentenceStatus = {
   loading: boolean;
   error: string | null;
-  /** Words known in both directions for this unordered pair. */
-  knownBoth: number;
-  /** Words known in exactly one direction. */
-  knownOneWay: number;
-  knownForwardOnly: number;
-  knownReverseOnly: number;
+  /** Words known for this unordered pair (combined A↔B score). */
+  known: number;
   ready: number;
   unlockHint: string;
 };
@@ -22,10 +18,7 @@ export type SentenceStatus = {
 const empty: SentenceStatus = {
   loading: true,
   error: null,
-  knownBoth: 0,
-  knownOneWay: 0,
-  knownForwardOnly: 0,
-  knownReverseOnly: 0,
+  known: 0,
   ready: 0,
   unlockHint: "",
 };
@@ -60,10 +53,7 @@ export function useSentenceStatus(
         setStatus({
           loading: false,
           error: null,
-          knownBoth: pair.knownBoth,
-          knownOneWay: pair.knownOneWay,
-          knownForwardOnly: pair.knownForwardOnly,
-          knownReverseOnly: pair.knownReverseOnly,
+          known: pair.known,
           ready,
           unlockHint: unlockHint(ready, index),
         });

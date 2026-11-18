@@ -155,10 +155,7 @@ export function Home({
   sentence: {
     loading: boolean;
     error: string | null;
-    knownBoth: number;
-    knownOneWay: number;
-    knownForwardOnly: number;
-    knownReverseOnly: number;
+    known: number;
     ready: number;
     unlockHint: string;
   };
@@ -227,10 +224,7 @@ export function Home({
           to={settings.to}
           loading={sentence.loading}
           error={sentence.error}
-          knownBoth={sentence.knownBoth}
-          knownOneWay={sentence.knownOneWay}
-          knownForwardOnly={sentence.knownForwardOnly}
-          knownReverseOnly={sentence.knownReverseOnly}
+          known={sentence.known}
           ready={sentence.ready}
           unlockHint={sentence.unlockHint}
           onOpen={onSentence}

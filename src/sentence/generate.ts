@@ -1,3 +1,4 @@
+import { combinePairStat, type WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import { composePool, sampleComposed, type StructureKind } from "./compose";
 import type { GeneratorProgress, PracticeSentence, SentencePack, SlotWord, VocabIndex } from "./types";
@@ -70,22 +71,20 @@ export function slotLabel(word: SlotWord, side: "prompt" | "answer"): string {
   return surface.npNom || surface.lemma;
 }
 
-/** Average lifetime accuracy across eligible slot words using provided stats maps. */
+/** Average lifetime accuracy across eligible slot words using combined pair stats. */
 export function progressFromStats(
   index: VocabIndex,
-  promptStats: ReadonlyMap<string, { correct: number; attempts: number }>,
-  answerStats: ReadonlyMap<string, { correct: number; attempts: number }>,
+  promptStats: ReadonlyMap<string, WordStat>,
+  answerStats: ReadonlyMap<string, WordStat>,
 ): GeneratorProgress {
   const ids = [...index.byId.keys()];
   let sum = 0;
   let n = 0;
   for (const id of ids) {
-    for (const map of [promptStats, answerStats]) {
-      const stat = map.get(id);
-      if (stat && stat.attempts > 0) {
-        sum += stat.correct / stat.attempts;
-        n += 1;
-      }
+    const combined = combinePairStat(promptStats.get(id), answerStats.get(id));
+    if (combined && combined.attempts > 0) {
+      sum += combined.correct / combined.attempts;
+      n += 1;
     }
   }
   return {

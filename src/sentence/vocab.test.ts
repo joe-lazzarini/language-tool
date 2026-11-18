@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "../types";
-import { buildVocabIndex, inferSurface } from "./vocab";
+import { buildVocabIndex, inferSurface, isEligiblePair } from "./vocab";
 import type { GrammarFile } from "./types";
 import { recordAttempt, type WordStat } from "../accuracy/stats";
 
 function knownStat(): WordStat {
   let stat = recordAttempt(undefined, true, 1);
   return recordAttempt(stat, true, 2);
+}
+
+function once(now = 1): WordStat {
+  return recordAttempt(undefined, true, now);
 }
 
 function form(text: string, context?: string) {
@@ -16,6 +20,44 @@ function form(text: string, context?: string) {
 function entry(id: string, pos: string, forms: Entry["forms"], concept?: string): Entry {
   return { id, pos, ranks: {}, forms, concept };
 }
+
+describe("combined pair eligibility", () => {
+  it("treats one strong direction plus unseen reverse as eligible", () => {
+    expect(isEligiblePair(knownStat(), undefined)).toBe(true);
+    expect(isEligiblePair(undefined, knownStat())).toBe(true);
+  });
+
+  it("treats one correct each way as eligible via the combined window", () => {
+    expect(isEligiblePair(once(1), once(2))).toBe(true);
+  });
+
+  it("keeps a word out when the combined score is weak", () => {
+    const miss = recordAttempt(undefined, false, 1);
+    expect(isEligiblePair(miss, miss)).toBe(false);
+  });
+
+  it("indexes a noun that is known only on one side", () => {
+    const grammar: GrammarFile = {
+      version: 1,
+      words: {
+        "custom-cat": {
+          pos: "noun",
+          concept: "cat",
+          sem: ["animal"],
+          langs: {
+            pl: { lemma: "kot", gender: "m" },
+            en: { lemma: "cat", gender: "n" },
+          },
+        },
+      },
+    };
+    const cat = entry("custom-cat", "noun", { pl: form("kot"), en: form("cat") }, "cat");
+    const forwardOnly = new Map([["custom-cat", knownStat()]]);
+    const empty = new Map<string, WordStat>();
+    const index = buildVocabIndex([cat], grammar, "en", "pl", empty, forwardOnly);
+    expect(index.byId.has("custom-cat")).toBe(true);
+  });
+});
 
 describe("Polish surface inference", () => {
   it("forms -ki/-gi adjective feminines without *ia", () => {
