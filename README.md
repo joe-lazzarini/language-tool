@@ -14,7 +14,7 @@ One concept per card. Citation form for open-class words: nominative singular no
 - Frequency bands (first 100 / 250 / 500 / all, plus later slices) and round sizes of 10, 20, 50, or the whole band. When the pair includes Polish or German, that side’s frequency list decides which cards and which order. Other pairs share one concept list, ordered by the best Polish or German rank those cards have.
 - **Any listed answer is correct** (case-insensitive, trimmed whitespace). Whether diacritics are required is set per language in the registry. A leading English *to* / *a* / *an* / *the* is optional on English answers. Mandarin also accepts pinyin with tone marks, tone numbers (*ni3 hao3*), or no tones, ignoring spaces. An on-screen letter bar appears for languages that list special letters (Polish, German, Spanish, French, Italian, Portuguese, Dutch).
 - **Add a word** you came across. It is saved for the language pair you currently have selected (English → Polish and Polish → English share one list). Type it in one of those two languages. The app fills in the other, you confirm or edit it, then save.
-- **Your words** join study and quiz for that pair: they are part of the full deck, and you can also select the **My words** band. The count, the list, and My words follow the pair you pick. Edit or delete them from the list.
+- **Your words** join study and quiz for that pair: they are part of the full deck, and **My words** is a first-class choice under **Which words** (alongside the frequency bands). The start button names the selection (for example `Start quiz · My words (12)`). The list and My words follow the pair you pick; from the list or right after saving you can jump into **Quiz my words**. Edit or delete them from the list.
 - **Sync** is optional. Without Firebase config, words and practice stay in this browser (`localStorage`). With Firebase, Google sign-in stores words and practice in Firestore. The first sign-in merges what is already saved on the device. Practice writes are debounced, one document per direction, not one write per answer.
 
 Each language’s deck is a separate JSON file and is loaded when you need it. Custom words and practice history are the data stored per user. Practice history is one compact record per direction (`en_pl` is an English prompt with a Polish answer): correct and attempt counts, the last eight results, and an optional “I know this” mark. “Known” is derived from that record. It is not stored as a second list.
@@ -62,6 +62,9 @@ Vitest includes `**/*.{test,spec}.?(c|m)[jt]s?(x)` (`vite.config.ts`). That patt
 - `src/accuracy/stats.test.ts`
 - `src/components/AddWord.test.tsx`
 - `src/components/AnswerReveal.test.tsx`
+- `src/components/Home.test.tsx`
+- `src/components/Session.test.tsx`
+- `src/components/WordList.test.tsx`
 - `src/lib/advanceKey.test.ts`
 - `src/lib/customWords.test.ts`
 - `src/lib/deck.test.ts`
@@ -71,6 +74,7 @@ Vitest includes `**/*.{test,spec}.?(c|m)[jt]s?(x)` (`vite.config.ts`). That patt
 - `src/lib/match.test.ts`
 - `src/lib/mymemory.test.ts`
 - `src/lib/pinyin.test.ts`
+- `src/lib/practiceSetup.test.ts`
 - `src/lib/translate.test.ts`
 - `src/lib/wiktionary.test.ts`
 - `src/sentence/SentenceCard.test.tsx`
