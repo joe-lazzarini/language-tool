@@ -260,8 +260,9 @@ export function isEligibleStat(stat: WordStat | undefined): boolean {
 }
 
 /**
- * Build in-memory indexes of study words that are known and not weak on both
- * sides and that have enough POS/grammar metadata for the current pair.
+ * Build in-memory indexes of study words that are eligible on both sides
+ * (known for the unordered pair via each direction's threshold, and not weak)
+ * and that have enough POS/grammar metadata for the current pair.
  */
 export function buildVocabIndex(
   studyEntries: readonly Entry[],
@@ -354,11 +355,13 @@ export function wordsNeededHint(ready: number, index: VocabIndex, minReady: numb
   const verbs = index.verbs.length;
   const adjs = index.adjectives.length;
   if (nouns === 0 && verbs === 0 && adjs === 0) {
-    return `Know a few more study words (nouns, verbs, or adjectives) on both sides. About ${need} more sentences unlock the quiz.`;
+    return `Know a few more study words (nouns, verbs, or adjectives) both ways for this pair. About ${need} more sentences unlock the quiz.`;
   }
-  if (nouns === 0) return `Know at least one more noun on both sides (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+  if (nouns === 0) {
+    return `Know at least one more noun both ways for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+  }
   if (verbs === 0 && adjs === 0) {
-    return `Know at least one more verb or adjective on both sides (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+    return `Know at least one more verb or adjective both ways for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
   }
-  return `${ready} of ${minReady} sentences ready. Know a few more eligible study words to unlock.`;
+  return `${ready} of ${minReady} sentences ready. Know a few more study words both ways for this pair to unlock.`;
 }

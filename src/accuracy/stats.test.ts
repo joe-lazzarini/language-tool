@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   STAT_CAP,
+  dirKey,
   docToStats,
   focusHint,
   fromTuple,
   isKnown,
+  isKnownPair,
   isWeak,
   knownIdSet,
   mergeStat,
+  parseDirKey,
   putStat,
   recordAttempt,
   selectCards,
   statsToDoc,
+  summarizePairKnown,
   toTuple,
   windowAccuracy,
   withManual,
@@ -21,6 +25,10 @@ import { parseAccuracyDoc, parseAccuracyStore } from "./storage";
 
 function missed(now = 1): WordStat {
   return recordAttempt(undefined, false, now);
+}
+
+function solid(now = 1): WordStat {
+  return recordAttempt(recordAttempt(undefined, true, now), true, now + 1);
 }
 
 describe("recordAttempt", () => {
@@ -59,6 +67,83 @@ describe("isKnown", () => {
       ["pl-1", recordAttempt(undefined, true, 3)],
     ]);
     expect([...knownIdSet(stats)]).toEqual(["pl-103"]);
+  });
+});
+
+describe("isKnownPair / summarizePairKnown", () => {
+  it("treats one-direction knowledge as not known for the pair", () => {
+    const forward = solid();
+    expect(isKnownPair(forward, undefined)).toBe(false);
+    expect(isKnownPair(undefined, forward)).toBe(false);
+    expect(isKnownPair(forward, missed())).toBe(false);
+  });
+
+  it("treats both-direction knowledge as known for the pair", () => {
+    expect(isKnownPair(solid(), solid(10))).toBe(true);
+    expect(isKnownPair(withManual(undefined, true, 1)!, solid())).toBe(true);
+  });
+
+  it("keeps different language pairs independent via separate direction maps", () => {
+    const enPlForward = new Map<string, WordStat>([["cat", solid()]]);
+    const enPlReverse = new Map<string, WordStat>([["cat", solid(5)]]);
+    const enDeForward = new Map<string, WordStat>([["cat", solid(20)]]);
+    const enDeReverse = new Map<string, WordStat>();
+
+    expect(isKnownPair(enPlForward.get("cat"), enPlReverse.get("cat"))).toBe(true);
+    expect(isKnownPair(enDeForward.get("cat"), enDeReverse.get("cat"))).toBe(false);
+
+    expect(summarizePairKnown(["cat", "dog"], enPlForward, enPlReverse)).toEqual({
+      knownBoth: 1,
+      knownOneWay: 0,
+      knownForwardOnly: 0,
+      knownReverseOnly: 0,
+    });
+    expect(summarizePairKnown(["cat", "dog"], enDeForward, enDeReverse)).toEqual({
+      knownBoth: 0,
+      knownOneWay: 1,
+      knownForwardOnly: 1,
+      knownReverseOnly: 0,
+    });
+  });
+
+  it("counts one-way vs both-ways from existing per-direction docs", () => {
+    const forward = new Map<string, WordStat>([
+      ["both", solid()],
+      ["fwd", solid(3)],
+      ["neither", missed()],
+    ]);
+    const reverse = new Map<string, WordStat>([
+      ["both", solid(8)],
+      ["rev", solid(9)],
+    ]);
+    expect(summarizePairKnown(["both", "fwd", "rev", "neither"], forward, reverse)).toEqual({
+      knownBoth: 1,
+      knownOneWay: 2,
+      knownForwardOnly: 1,
+      knownReverseOnly: 1,
+    });
+  });
+
+  it("uses the same pair rules for zh/ja direction keys and docs", () => {
+    expect(dirKey("en", "zh")).toBe("en_zh");
+    expect(dirKey("zh", "en")).toBe("zh_en");
+    expect(dirKey("ja", "en")).toBe("ja_en");
+    expect(parseDirKey("en_zh")).toEqual(["en", "zh"]);
+    expect(parseDirKey("ja_en")).toEqual(["ja", "en"]);
+
+    const enZh = new Map<string, WordStat>([["see", solid()]]);
+    const zhEn = new Map<string, WordStat>([["see", solid(2)]]);
+    const enJa = new Map<string, WordStat>([["see", solid(3)]]);
+    const jaEn = new Map<string, WordStat>();
+
+    expect(isKnownPair(enZh.get("see"), zhEn.get("see"))).toBe(true);
+    expect(isKnownPair(enJa.get("see"), jaEn.get("see"))).toBe(false);
+    expect(summarizePairKnown(["see"], enJa, jaEn)).toEqual({
+      knownBoth: 0,
+      knownOneWay: 1,
+      knownForwardOnly: 1,
+      knownReverseOnly: 0,
+    });
   });
 });
 
@@ -164,9 +249,10 @@ describe("tuple storage", () => {
 });
 
 describe("focusHint", () => {
-  it("describes the fallback and the weak count", () => {
+  it("describes the fallback and the weak count for this direction", () => {
     expect(focusHint("weak", 0)).toContain("whole band");
     expect(focusHint("weak", 1)).toContain("1 weak word");
+    expect(focusHint("weak", 1)).toContain("this direction");
     expect(focusHint("weak", 3)).toContain("3 weak words");
     expect(focusHint("all", 3)).toContain("Every card");
   });
