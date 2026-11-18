@@ -163,4 +163,49 @@ describe("useSentenceStatus cache", () => {
     expect(generateSentences).toHaveBeenCalledTimes(2);
     expect(latest?.loading).toBe(false);
   });
+
+  it("recomputes when accuracy revision bumps after answering", async () => {
+    const { generateSentences } = await import("./generate");
+    const read = (_from: LangCode, _to: LangCode) => new Map<string, WordStat>();
+    const entries: Entry[] = [];
+    let latest: SentenceStatus | undefined;
+
+    const view = mount(
+      <HookProbe
+        from="en"
+        to="pl"
+        revision={0}
+        read={read}
+        entries={entries}
+        onStatus={(status) => {
+          latest = status;
+        }}
+      />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(generateSentences).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      view.root.render(
+        <HookProbe
+          from="en"
+          to="pl"
+          revision={1}
+          read={read}
+          entries={entries}
+          onStatus={(status) => {
+            latest = status;
+          }}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(generateSentences).toHaveBeenCalledTimes(2);
+    expect(latest?.loading).toBe(false);
+  });
 });

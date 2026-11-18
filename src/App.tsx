@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AccountBar } from "./components/AccountBar";
 import { AddWord } from "./components/AddWord";
 import { AnswerReveal } from "./components/AnswerReveal";
@@ -789,10 +789,14 @@ export function App() {
 
   const entries = useMemo(() => (catalog ? assembleEntries(catalog, packs) : []), [catalog, packs]);
   const pairReady = Boolean(catalog && packs[settings.from] && packs[settings.to]);
-  const pairWords = useMemo(
-    () => customWordsForPair(wordsApi.words, settings.from, settings.to),
-    [wordsApi.words, settings.from, settings.to],
-  );
+  // Unordered pair key so EN↔PL swaps reuse the same custom/study entry arrays
+  // (keeps entriesForPair WeakMap hits instead of rebuilding ~2k cards).
+  const unorderedPairKey =
+    settings.from <= settings.to ? `${settings.from}_${settings.to}` : `${settings.to}_${settings.from}`;
+  const pairWords = useMemo(() => {
+    const [a, b] = unorderedPairKey.split("_") as [typeof settings.from, typeof settings.to];
+    return customWordsForPair(wordsApi.words, a, b);
+  }, [wordsApi.words, unorderedPairKey]);
   const otherPairs = useMemo(
     () => otherPairsWithWords(wordsApi.words, settings.from, settings.to),
     [wordsApi.words, settings.from, settings.to],
@@ -802,6 +806,10 @@ export function App() {
     () => (catalog ? withCustomEntries(entries, customEntries) : customEntries),
     [catalog, entries, customEntries],
   );
+  // Pickers update on urgent settings; deck-derived counts may lag one frame.
+  const deferredFrom = useDeferredValue(settings.from);
+  const deferredTo = useDeferredValue(settings.to);
+  const deferredRange = useDeferredValue(settings.range);
   /** All pair vocabulary for sentence quiz (deck + add-a-word), not the study band. */
   const sentenceEntries = useMemo(
     () => entriesForPair(studyEntries, settings.from, settings.to),
@@ -815,13 +823,28 @@ export function App() {
     sentenceEntries,
   );
   const pairEntries = useMemo(() => {
-    const source = settings.range === "mine" ? customEntries : studyEntries;
-    return entriesForPair(source, settings.from, settings.to);
-  }, [customEntries, studyEntries, settings.from, settings.to, settings.range]);
-  const pool = wordsForRange(pairEntries, settings.range).length;
+    const source = deferredRange === "mine" ? customEntries : studyEntries;
+    return entriesForPair(source, deferredFrom, deferredTo);
+  }, [customEntries, studyEntries, deferredFrom, deferredTo, deferredRange]);
+  const rangeBand = useMemo(
+    () => wordsForRange(pairEntries, deferredRange),
+    [pairEntries, deferredRange],
+  );
+  const pool = rangeBand.length;
+  const weakInBand = useMemo(
+    () => weakCount(rangeBand, accuracy.read(deferredFrom, deferredTo)),
+    [rangeBand, accuracy.read, accuracy.revision, deferredFrom, deferredTo],
+  );
 
   function start() {
-    const band = wordsForRange(pairEntries, settings.range);
+    const band = wordsForRange(
+      entriesForPair(
+        settings.range === "mine" ? customEntries : studyEntries,
+        settings.from,
+        settings.to,
+      ),
+      settings.range,
+    );
     setSession(selectCards(band, accuracy.read(settings.from, settings.to), settings.focus, settings.size));
   }
 
@@ -878,7 +901,7 @@ export function App() {
             pool={pool}
             customCount={pairWords.length}
             otherPairs={otherPairs}
-            weakInBand={weakCount(wordsForRange(pairEntries, settings.range), accuracy.read(settings.from, settings.to))}
+            weakInBand={weakInBand}
             sentence={sentenceStatus}
             onStart={start}
             onSentence={openSentence}
