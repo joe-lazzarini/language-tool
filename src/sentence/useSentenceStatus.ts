@@ -9,8 +9,8 @@ import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab"
 export type SentenceStatus = {
   loading: boolean;
   error: string | null;
-  knownPrompt: number;
-  knownAnswer: number;
+  /** Eligible known non-weak candidates for the selected directed pair. */
+  known: number;
   ready: number;
   unlockHint: string;
 };
@@ -18,8 +18,7 @@ export type SentenceStatus = {
 const empty: SentenceStatus = {
   loading: true,
   error: null,
-  knownPrompt: 0,
-  knownAnswer: 0,
+  known: 0,
   ready: 0,
   unlockHint: "",
 };
@@ -39,17 +38,15 @@ export function useSentenceStatus(
     Promise.all([loadGrammar(), loadSentencePack(from), loadSentencePack(to)])
       .then(([grammar, promptPack, answerPack]) => {
         if (cancelled) return;
-        const promptStats = read(to, from);
-        const answerStats = read(from, to);
+        const pairStats = read(from, to);
         const candidates = listGrammarCandidates(studyEntries, grammar, from, to);
-        const index = buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
-        const progress = progressFromStats(index, promptStats, answerStats);
+        const index = buildVocabIndex(studyEntries, grammar, from, to, pairStats);
+        const progress = progressFromStats(index, pairStats);
         const ready = generateSentences(index, from, promptPack, to, answerPack, progress).length;
         setStatus({
           loading: false,
           error: null,
-          knownPrompt: candidates.filter((entry) => isEligibleStat(promptStats.get(entry.id))).length,
-          knownAnswer: candidates.filter((entry) => isEligibleStat(answerStats.get(entry.id))).length,
+          known: candidates.filter((entry) => isEligibleStat(pairStats.get(entry.id))).length,
           ready,
           unlockHint: unlockHint(ready, index),
         });

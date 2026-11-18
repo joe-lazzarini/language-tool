@@ -125,7 +125,7 @@ function allKnownStats(ids: string[]): Map<string, WordStat> {
 }
 
 function generate(prompt: LangCode, answer: LangCode, entries: Entry[], stats: Map<string, WordStat>) {
-  const index = buildVocabIndex(entries, grammar, prompt, answer, stats, stats);
+  const index = buildVocabIndex(entries, grammar, prompt, answer, stats);
   let seed = 42;
   const rng = () => {
     seed = (seed * 16807) % 2147483647;
@@ -200,7 +200,7 @@ describe("dynamic sentence generation", () => {
     const dog = entry("de-757", "noun", { en: form("dog"), pl: form("pies") }, "dog");
     const few = [house, big];
     const fewStats = allKnownStats(["pl-103", "de-49"]);
-    const fewIndex = buildVocabIndex(few, grammar, "en", "pl", fewStats, fewStats);
+    const fewIndex = buildVocabIndex(few, grammar, "en", "pl", fewStats);
     const fewSentences = generateSentences(fewIndex, "en", packs.en, "pl", packs.pl);
     expect(fewSentences.length).toBeLessThan(MIN_READY_SENTENCES);
     expect(unlockHint(fewSentences.length, fewIndex).length).toBeGreaterThan(0);

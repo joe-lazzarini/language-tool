@@ -70,22 +70,19 @@ export function slotLabel(word: SlotWord, side: "prompt" | "answer"): string {
   return surface.npNom || surface.lemma;
 }
 
-/** Average lifetime accuracy across eligible slot words using provided stats maps. */
+/** Average lifetime accuracy across eligible slot words for the selected pair. */
 export function progressFromStats(
   index: VocabIndex,
-  promptStats: ReadonlyMap<string, { correct: number; attempts: number }>,
-  answerStats: ReadonlyMap<string, { correct: number; attempts: number }>,
+  pairStats: ReadonlyMap<string, { correct: number; attempts: number }>,
 ): GeneratorProgress {
   const ids = [...index.byId.keys()];
   let sum = 0;
   let n = 0;
   for (const id of ids) {
-    for (const map of [promptStats, answerStats]) {
-      const stat = map.get(id);
-      if (stat && stat.attempts > 0) {
-        sum += stat.correct / stat.attempts;
-        n += 1;
-      }
+    const stat = pairStats.get(id);
+    if (stat && stat.attempts > 0) {
+      sum += stat.correct / stat.attempts;
+      n += 1;
     }
   }
   return {

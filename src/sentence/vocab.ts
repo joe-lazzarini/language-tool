@@ -260,16 +260,17 @@ export function isEligibleStat(stat: WordStat | undefined): boolean {
 }
 
 /**
- * Build in-memory indexes of study words that are known and not weak on both
- * sides and that have enough POS/grammar metadata for the current pair.
+ * Build in-memory indexes of study words that are known and not weak for the
+ * selected directed pair (prompt→answer) and that have enough POS/grammar
+ * metadata. Eligibility uses that pair's accuracy doc only — the reverse
+ * direction is a separate status.
  */
 export function buildVocabIndex(
   studyEntries: readonly Entry[],
   grammar: GrammarFile,
   promptLang: LangCode,
   answerLang: LangCode,
-  promptStats: ReadonlyMap<string, WordStat>,
-  answerStats: ReadonlyMap<string, WordStat>,
+  pairStats: ReadonlyMap<string, WordStat>,
 ): VocabIndex {
   const nouns: SlotWord[] = [];
   const verbs: SlotWord[] = [];
@@ -279,7 +280,7 @@ export function buildVocabIndex(
   for (const entry of studyEntries) {
     const pos = normalizePos(entry.pos);
     if (!pos) continue;
-    if (!isEligibleStat(promptStats.get(entry.id)) || !isEligibleStat(answerStats.get(entry.id))) continue;
+    if (!isEligibleStat(pairStats.get(entry.id))) continue;
 
     const meta = grammarForEntry(grammar, entry);
     const metaPos = meta?.pos ?? pos;
@@ -354,11 +355,11 @@ export function wordsNeededHint(ready: number, index: VocabIndex, minReady: numb
   const verbs = index.verbs.length;
   const adjs = index.adjectives.length;
   if (nouns === 0 && verbs === 0 && adjs === 0) {
-    return `Know a few more study words (nouns, verbs, or adjectives) on both sides. About ${need} more sentences unlock the quiz.`;
+    return `Know a few more study words (nouns, verbs, or adjectives) for this pair. About ${need} more sentences unlock the quiz.`;
   }
-  if (nouns === 0) return `Know at least one more noun on both sides (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+  if (nouns === 0) return `Know at least one more noun for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
   if (verbs === 0 && adjs === 0) {
-    return `Know at least one more verb or adjective on both sides (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+    return `Know at least one more verb or adjective for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
   }
   return `${ready} of ${minReady} sentences ready. Know a few more eligible study words to unlock.`;
 }

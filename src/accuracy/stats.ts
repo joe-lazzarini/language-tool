@@ -139,10 +139,10 @@ export function weakCount(pool: readonly { id: string }[], stats: ReadonlyMap<st
 export function focusHint(focus: "all" | "weak", weak: number): string {
   if (focus === "all") return "Every card in this band can come up.";
   if (weak === 0) {
-    return "No misses recorded for this direction yet, so a round still uses the whole band.";
+    return "No misses recorded for this pair yet, so a round still uses the whole band.";
   }
   const noun = weak === 1 ? "word" : "words";
-  return `${weak} weak ${noun} in this band. A short round uses those first and fills with new cards if it needs more. Choosing All cards uses only the weak ones.`;
+  return `${weak} weak ${noun} in this band for this pair. A short round uses those first and fills with new cards if it needs more. Choosing All cards uses only the weak ones.`;
 }
 
 export function mergeStat(a: WordStat, b: WordStat): WordStat {

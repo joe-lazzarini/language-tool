@@ -70,7 +70,7 @@ describe("Polish surface inference", () => {
       ["custom-friend", knownStat()],
       ["custom-cat", knownStat()],
     ]);
-    const index = buildVocabIndex([friend, cat], grammar, "en", "pl", stats, stats);
+    const index = buildVocabIndex([friend, cat], grammar, "en", "pl", stats);
     expect(index.byId.get("custom-friend")?.answer.acc).toBe("przyjaciela");
     expect(index.byId.get("custom-friend")?.answer.npAcc).toBe("przyjaciela");
     expect(index.byId.get("custom-cat")?.answer.acc).toBe("kota");
@@ -97,7 +97,7 @@ describe("Polish surface inference", () => {
     };
     const word = entry("pl-792", "adjective", { pl: form("szybki"), en: form("fast") }, "fast");
     const stats = new Map([["pl-792", knownStat()]]);
-    const index = buildVocabIndex([word], grammar, "en", "pl", stats, stats);
+    const index = buildVocabIndex([word], grammar, "en", "pl", stats);
     expect(index.byId.get("pl-792")?.answer.f).toBe("szybka");
   });
 });

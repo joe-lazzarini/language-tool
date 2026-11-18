@@ -1,4 +1,4 @@
-import { languageName, pairNames, type LangCode } from "../lib/languages";
+import { pairLabel, pairNames, type LangCode } from "../lib/languages";
 import { MIN_READY_SENTENCES } from "./generate";
 
 export function SentenceCard({
@@ -6,8 +6,7 @@ export function SentenceCard({
   to,
   loading,
   error,
-  knownPrompt,
-  knownAnswer,
+  known,
   ready,
   unlockHint = "",
   onOpen,
@@ -16,18 +15,19 @@ export function SentenceCard({
   to: LangCode;
   loading: boolean;
   error: string | null;
-  knownPrompt: number;
-  knownAnswer: number;
+  known: number;
   ready: number;
   unlockHint?: string;
   onOpen: () => void;
 }) {
   const unlocked = ready >= MIN_READY_SENTENCES;
-  let hint = `${knownAnswer} ready in ${languageName(to)}, ${knownPrompt} ready in ${languageName(from)}. ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
+  const noun = known === 1 ? "word" : "words";
+  const knownLine = `${known} known ${noun} for ${pairLabel(from, to)}.`;
+  let hint = `${knownLine} ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
   if (error) hint = error;
   else if (loading) hint = "Loading sentence patterns…";
-  else if (unlocked) hint = `${ready} sentences ready from study words you know in both languages.`;
-  else if (unlockHint) hint = unlockHint;
+  else if (unlocked) hint = `${ready} sentences ready from study words you know for this pair.`;
+  else if (unlockHint) hint = `${knownLine} ${unlockHint}`;
 
   return (
     <section className="sentence-card" aria-label="Sentence quiz">

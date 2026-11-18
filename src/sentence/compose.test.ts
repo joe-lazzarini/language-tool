@@ -76,7 +76,7 @@ function mulberry(seed: number): () => number {
 function indexFor(prompt: LangCode, answer: LangCode) {
   const deck = studyDeck();
   const stats = allKnown(deck.map((e) => e.id));
-  return buildVocabIndex(deck, grammar, prompt, answer, stats, stats);
+  return buildVocabIndex(deck, grammar, prompt, answer, stats);
 }
 
 describe("compositional sentence generator", () => {
@@ -297,7 +297,7 @@ describe("manual known custom word", () => {
     const deck = studyDeck();
     const stats = allKnown(deck.map((e) => e.id));
     stats.set("custom-cat", withManual(undefined, true, 1)!);
-    const index = buildVocabIndex(deck, grammar, "en", "pl", stats, stats);
+    const index = buildVocabIndex(deck, grammar, "en", "pl", stats);
     const basic = enumerateBasicClauses(index, "en", "pl", 0);
     expect(basic.some((s) => s.wordIds.includes("custom-cat"))).toBe(true);
   });

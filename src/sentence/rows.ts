@@ -10,14 +10,12 @@ export type SentenceWordRow = {
   pos: "noun" | "verb" | "adjective";
   prompt: string;
   answer: string;
-  promptKnown: boolean;
-  answerKnown: boolean;
-  promptManual: boolean;
-  answerManual: boolean;
+  known: boolean;
+  manual: boolean;
   eligible: boolean;
 };
 
-function sideState(stats: ReadonlyMap<string, WordStat>, id: string): { known: boolean; manual: boolean } {
+function pairState(stats: ReadonlyMap<string, WordStat>, id: string): { known: boolean; manual: boolean } {
   const stat = stats.get(id);
   return {
     known: isKnown(stat),
@@ -41,7 +39,7 @@ function displaySlot(
     manual: false,
   };
   const stats = new Map([[entry.id, known]]);
-  return buildVocabIndex([entry], grammar, promptLang, answerLang, stats, stats).byId.get(entry.id);
+  return buildVocabIndex([entry], grammar, promptLang, answerLang, stats).byId.get(entry.id);
 }
 
 export function sentenceRows(
@@ -49,17 +47,15 @@ export function sentenceRows(
   grammar: GrammarFile,
   promptLang: LangCode,
   answerLang: LangCode,
-  promptStats: ReadonlyMap<string, WordStat>,
-  answerStats: ReadonlyMap<string, WordStat>,
+  pairStats: ReadonlyMap<string, WordStat>,
 ): SentenceWordRow[] {
   const candidates = listGrammarCandidates(studyEntries, grammar, promptLang, answerLang);
   const rows: SentenceWordRow[] = [];
 
   for (const entry of candidates) {
-    const prompt = sideState(promptStats, entry.id);
-    const answer = sideState(answerStats, entry.id);
+    const state = pairState(pairStats, entry.id);
     // Lobby lists words you have practiced or added — not the entire deck.
-    if (!entry.custom && !prompt.known && !answer.known) continue;
+    if (!entry.custom && !state.known) continue;
     const display = displaySlot(entry, grammar, promptLang, answerLang);
     if (!display) continue;
     rows.push({
@@ -67,11 +63,9 @@ export function sentenceRows(
       pos: display.pos,
       prompt: slotLabel(display, "prompt"),
       answer: slotLabel(display, "answer"),
-      promptKnown: prompt.known,
-      answerKnown: answer.known,
-      promptManual: prompt.manual,
-      answerManual: answer.manual,
-      eligible: isEligibleStat(promptStats.get(entry.id)) && isEligibleStat(answerStats.get(entry.id)),
+      known: state.known,
+      manual: state.manual,
+      eligible: isEligibleStat(pairStats.get(entry.id)),
     });
   }
 

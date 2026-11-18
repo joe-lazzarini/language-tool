@@ -29,10 +29,10 @@ import { buildVocabIndex } from "./vocab";
 
 type Phase = "lobby" | "round";
 
-function knownLabel(language: string, known: boolean, manual: boolean): string {
-  if (known && manual) return `${language}: marked known`;
-  if (known) return `${language}: known from quiz`;
-  return `Mark known in ${language}`;
+function knownLabel(pair: string, known: boolean, manual: boolean): string {
+  if (known && manual) return `Marked known for ${pair}`;
+  if (known) return `Known for ${pair} from quiz`;
+  return `Mark known for ${pair}`;
 }
 
 function WordGroups({
@@ -44,8 +44,9 @@ function WordGroups({
   from: LangCode;
   to: LangCode;
   rows: SentenceWordRow[];
-  onToggle: (side: "prompt" | "answer", id: string, manual: boolean) => void;
+  onToggle: (id: string, manual: boolean) => void;
 }) {
+  const pair = pairLabel(from, to);
   const groups = [
     ["noun", "Nouns"],
     ["verb", "Verbs"],
@@ -75,16 +76,10 @@ function WordGroups({
                   </p>
                   <div className="tool-row">
                     <KnownButton
-                      language={languageName(from)}
-                      known={row.promptKnown}
-                      manual={row.promptManual}
-                      onToggle={(manual) => onToggle("prompt", row.id, manual)}
-                    />
-                    <KnownButton
-                      language={languageName(to)}
-                      known={row.answerKnown}
-                      manual={row.answerManual}
-                      onToggle={(manual) => onToggle("answer", row.id, manual)}
+                      pair={pair}
+                      known={row.known}
+                      manual={row.manual}
+                      onToggle={(manual) => onToggle(row.id, manual)}
                     />
                   </div>
                 </li>
@@ -98,12 +93,12 @@ function WordGroups({
 }
 
 function KnownButton({
-  language,
+  pair,
   known,
   manual,
   onToggle,
 }: {
-  language: string;
+  pair: string;
   known: boolean;
   manual: boolean;
   onToggle: (manual: boolean) => void;
@@ -117,7 +112,7 @@ function KnownButton({
       disabled={lockedIn}
       onClick={() => onToggle(!manual)}
     >
-      {knownLabel(language, known, manual)}
+      {knownLabel(pair, known, manual)}
     </button>
   );
 }
@@ -177,24 +172,23 @@ export function SentenceQuiz({
     };
   }, [from, to]);
 
-  const promptStats = useMemo(() => read(to, from), [read, to, from, revision]);
-  const answerStats = useMemo(() => read(from, to), [read, from, to, revision]);
+  const pairStats = useMemo(() => read(from, to), [read, from, to, revision]);
 
   const vocab = useMemo(() => {
     if (!grammar) return null;
-    return buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
-  }, [grammar, studyEntries, from, to, promptStats, answerStats]);
+    return buildVocabIndex(studyEntries, grammar, from, to, pairStats);
+  }, [grammar, studyEntries, from, to, pairStats]);
 
   const sentences = useMemo(() => {
     if (!vocab || !promptPack || !answerPack) return [];
-    const progress = progressFromStats(vocab, promptStats, answerStats);
+    const progress = progressFromStats(vocab, pairStats);
     return generateSentences(vocab, from, promptPack, to, answerPack, progress);
-  }, [vocab, promptPack, answerPack, from, to, promptStats, answerStats]);
+  }, [vocab, promptPack, answerPack, from, to, pairStats]);
 
   const rows = useMemo(() => {
     if (!grammar) return [];
-    return sentenceRows(studyEntries, grammar, from, to, promptStats, answerStats);
-  }, [grammar, studyEntries, from, to, promptStats, answerStats]);
+    return sentenceRows(studyEntries, grammar, from, to, pairStats);
+  }, [grammar, studyEntries, from, to, pairStats]);
 
   useEffect(() => {
     if (phase === "round") inputRef.current?.focus();
@@ -204,9 +198,8 @@ export function SentenceQuiz({
     if (revealed) inputRef.current?.blur();
   }, [revealed]);
 
-  function toggle(side: "prompt" | "answer", id: string, manual: boolean) {
-    if (side === "answer") onToggleManual(from, to, id, manual);
-    else onToggleManual(to, from, id, manual);
+  function toggle(id: string, manual: boolean) {
+    onToggleManual(from, to, id, manual);
   }
 
   function start() {
@@ -491,9 +484,9 @@ export function SentenceQuiz({
         <p className="eyebrow">Sentence quiz</p>
         <h1>{pairLabel(from, to)}</h1>
         <p className="lede">
-          Sentences are composed from study words you know on both sides that are not weak — structure
-          varies with your vocabulary size and accuracy. Two correct answers in a row, or a mark here,
-          counts as knowing the word. Weak words stay out until they improve.
+          Sentences are composed from study words you know for this direction that are not weak —
+          structure varies with your vocabulary size and accuracy. Two correct answers in a row, or a
+          mark here, counts as knowing the word for this pair. Weak words stay out until they improve.
         </p>
       </header>
       <section className="panel">

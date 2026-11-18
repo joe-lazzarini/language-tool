@@ -164,9 +164,11 @@ describe("tuple storage", () => {
 });
 
 describe("focusHint", () => {
-  it("describes the fallback and the weak count", () => {
+  it("describes the fallback and the weak count for the selected pair", () => {
     expect(focusHint("weak", 0)).toContain("whole band");
+    expect(focusHint("weak", 0)).toContain("this pair");
     expect(focusHint("weak", 1)).toContain("1 weak word");
+    expect(focusHint("weak", 1)).toContain("this pair");
     expect(focusHint("weak", 3)).toContain("3 weak words");
     expect(focusHint("all", 3)).toContain("Every card");
   });

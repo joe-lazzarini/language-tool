@@ -154,8 +154,7 @@ export function Home({
   sentence: {
     loading: boolean;
     error: string | null;
-    knownPrompt: number;
-    knownAnswer: number;
+    known: number;
     ready: number;
     unlockHint: string;
   };
@@ -224,8 +223,7 @@ export function Home({
           to={settings.to}
           loading={sentence.loading}
           error={sentence.error}
-          knownPrompt={sentence.knownPrompt}
-          knownAnswer={sentence.knownAnswer}
+          known={sentence.known}
           ready={sentence.ready}
           unlockHint={sentence.unlockHint}
           onOpen={onSentence}
