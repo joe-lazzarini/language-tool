@@ -1,4 +1,4 @@
-import { isKnown, type WordStat } from "../accuracy/stats";
+import { isKnown, isKnownPair, type WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import { slotLabel } from "./generate";
@@ -10,10 +10,14 @@ export type SentenceWordRow = {
   pos: "noun" | "verb" | "adjective";
   prompt: string;
   answer: string;
+  /** Known in the prompt←answer direction only (storage stays per-direction). */
   promptKnown: boolean;
+  /** Known in the answer←prompt (selected) direction only. */
   answerKnown: boolean;
   promptManual: boolean;
   answerManual: boolean;
+  /** True when known both ways for this pair (independent of weak). */
+  pairKnown: boolean;
   eligible: boolean;
 };
 
@@ -71,6 +75,7 @@ export function sentenceRows(
       answerKnown: answer.known,
       promptManual: prompt.manual,
       answerManual: answer.manual,
+      pairKnown: isKnownPair(answerStats.get(entry.id), promptStats.get(entry.id)),
       eligible: isEligibleStat(promptStats.get(entry.id)) && isEligibleStat(answerStats.get(entry.id)),
     });
   }

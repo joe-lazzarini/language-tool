@@ -30,8 +30,8 @@ import { buildVocabIndex } from "./vocab";
 type Phase = "lobby" | "round";
 
 function knownLabel(language: string, known: boolean, manual: boolean): string {
-  if (known && manual) return `${language}: marked known`;
-  if (known) return `${language}: known from quiz`;
+  if (known && manual) return `${language}: marked for this direction`;
+  if (known) return `${language}: known this direction`;
   return `Mark known in ${language}`;
 }
 
@@ -72,6 +72,10 @@ function WordGroups({
                     <span aria-hidden="true">→</span>
                     <span lang={languageByCode(to).locale}>{row.answer}</span>
                     {row.eligible ? <span className="pos"> in sentences</span> : null}
+                    {!row.eligible && row.pairKnown ? <span className="pos"> known both ways</span> : null}
+                    {!row.pairKnown && (row.promptKnown || row.answerKnown) ? (
+                      <span className="pos"> one way only</span>
+                    ) : null}
                   </p>
                   <div className="tool-row">
                     <KnownButton
@@ -491,9 +495,10 @@ export function SentenceQuiz({
         <p className="eyebrow">Sentence quiz</p>
         <h1>{pairLabel(from, to)}</h1>
         <p className="lede">
-          Sentences are composed from study words you know on both sides that are not weak — structure
-          varies with your vocabulary size and accuracy. Two correct answers in a row, or a mark here,
-          counts as knowing the word. Weak words stay out until they improve.
+          Sentences use study words known both ways for this language pair and not weak — structure
+          varies with your vocabulary size and accuracy. Two correct answers in a row in a direction,
+          or a mark here, counts for that direction; the word is known for the pair only when both
+          directions qualify. Weak words stay out until they improve.
         </p>
       </header>
       <section className="panel">
