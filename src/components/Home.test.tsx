@@ -19,8 +19,7 @@ const baseSettings: Settings = {
 const sentence = {
   loading: false,
   error: null,
-  knownPrompt: 0,
-  knownAnswer: 0,
+  known: 0,
   ready: 0,
   unlockHint: "Learn more words first.",
 };
