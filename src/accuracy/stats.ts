@@ -98,6 +98,51 @@ export function isKnown(stat: WordStat | undefined): boolean {
   return stat.windowLen >= KNOWN_TAIL && (stat.windowBits & 0b11) === 0b11;
 }
 
+/**
+ * Pair knowledge is unordered: a word is known for {A,B} only when both
+ * direction docs (A→B and B→A) meet the per-direction known threshold.
+ * EN–PL knowledge does not transfer to EN–DE; storage stays per-direction.
+ */
+export function isKnownPair(
+  forward: WordStat | undefined,
+  reverse: WordStat | undefined,
+): boolean {
+  return isKnown(forward) && isKnown(reverse);
+}
+
+export type PairKnownSummary = {
+  /** Known in both directions for this language pair. */
+  knownBoth: number;
+  /** Known in exactly one direction (needs the other side). */
+  knownOneWay: number;
+  knownForwardOnly: number;
+  knownReverseOnly: number;
+};
+
+/** Summarize pair-level known status from existing per-direction accuracy maps. */
+export function summarizePairKnown(
+  ids: readonly string[],
+  forward: ReadonlyMap<string, WordStat>,
+  reverse: ReadonlyMap<string, WordStat>,
+): PairKnownSummary {
+  let knownBoth = 0;
+  let knownForwardOnly = 0;
+  let knownReverseOnly = 0;
+  for (const id of ids) {
+    const a = isKnown(forward.get(id));
+    const b = isKnown(reverse.get(id));
+    if (a && b) knownBoth += 1;
+    else if (a) knownForwardOnly += 1;
+    else if (b) knownReverseOnly += 1;
+  }
+  return {
+    knownBoth,
+    knownOneWay: knownForwardOnly + knownReverseOnly,
+    knownForwardOnly,
+    knownReverseOnly,
+  };
+}
+
 export function knownIdSet(stats: ReadonlyMap<string, WordStat>): Set<string> {
   const ids = new Set<string>();
   for (const [id, stat] of stats) {
@@ -136,13 +181,18 @@ export function weakCount(pool: readonly { id: string }[], stats: ReadonlyMap<st
   return count;
 }
 
+/**
+ * Weak focus stays on the selected quiz direction (from→to). Pair-known
+ * (both ways) is a separate concept used by sentence quiz and known counts —
+ * one-way gaps are nudged there, not folded into weak selection.
+ */
 export function focusHint(focus: "all" | "weak", weak: number): string {
   if (focus === "all") return "Every card in this band can come up.";
   if (weak === 0) {
     return "No misses recorded for this direction yet, so a round still uses the whole band.";
   }
   const noun = weak === 1 ? "word" : "words";
-  return `${weak} weak ${noun} in this band. A short round uses those first and fills with new cards if it needs more. Choosing All cards uses only the weak ones.`;
+  return `${weak} weak ${noun} in this band for this direction. A short round uses those first and fills with new cards if it needs more. Choosing All cards uses only the weak ones.`;
 }
 
 export function mergeStat(a: WordStat, b: WordStat): WordStat {

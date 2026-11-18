@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import type { WordStat } from "../accuracy/stats";
+import { summarizePairKnown, type WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import { generateSentences, progressFromStats, unlockHint } from "./generate";
 import { loadGrammar, loadSentencePack } from "./load";
-import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab";
+import { buildVocabIndex, listGrammarCandidates } from "./vocab";
 
 export type SentenceStatus = {
   loading: boolean;
   error: string | null;
-  knownPrompt: number;
-  knownAnswer: number;
+  /** Words known in both directions for this unordered pair. */
+  knownBoth: number;
+  /** Words known in exactly one direction. */
+  knownOneWay: number;
+  knownForwardOnly: number;
+  knownReverseOnly: number;
   ready: number;
   unlockHint: string;
 };
@@ -18,8 +22,10 @@ export type SentenceStatus = {
 const empty: SentenceStatus = {
   loading: true,
   error: null,
-  knownPrompt: 0,
-  knownAnswer: 0,
+  knownBoth: 0,
+  knownOneWay: 0,
+  knownForwardOnly: 0,
+  knownReverseOnly: 0,
   ready: 0,
   unlockHint: "",
 };
@@ -39,17 +45,25 @@ export function useSentenceStatus(
     Promise.all([loadGrammar(), loadSentencePack(from), loadSentencePack(to)])
       .then(([grammar, promptPack, answerPack]) => {
         if (cancelled) return;
+        // answerStats = selected direction from→to; promptStats = reverse to→from.
         const promptStats = read(to, from);
         const answerStats = read(from, to);
         const candidates = listGrammarCandidates(studyEntries, grammar, from, to);
         const index = buildVocabIndex(studyEntries, grammar, from, to, promptStats, answerStats);
         const progress = progressFromStats(index, promptStats, answerStats);
         const ready = generateSentences(index, from, promptPack, to, answerPack, progress).length;
+        const pair = summarizePairKnown(
+          candidates.map((entry) => entry.id),
+          answerStats,
+          promptStats,
+        );
         setStatus({
           loading: false,
           error: null,
-          knownPrompt: candidates.filter((entry) => isEligibleStat(promptStats.get(entry.id))).length,
-          knownAnswer: candidates.filter((entry) => isEligibleStat(answerStats.get(entry.id))).length,
+          knownBoth: pair.knownBoth,
+          knownOneWay: pair.knownOneWay,
+          knownForwardOnly: pair.knownForwardOnly,
+          knownReverseOnly: pair.knownReverseOnly,
           ready,
           unlockHint: unlockHint(ready, index),
         });

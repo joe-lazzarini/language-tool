@@ -101,7 +101,7 @@ export type Settings = {
   to: LangCode;
   range: RangeId;
   size: SessionSize;
-  /** All uses the whole band. Weak prefers cards with low accuracy in this direction. */
+  /** All uses the whole band. Weak prefers cards with low accuracy in the selected direction only. */
   focus: Focus;
 };
 
