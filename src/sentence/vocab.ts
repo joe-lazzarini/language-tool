@@ -1,4 +1,4 @@
-import { isKnown, isWeak, type WordStat } from "../accuracy/stats";
+import { combinePairStat, isKnown, isWeak, type WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import type {
@@ -259,10 +259,18 @@ export function isEligibleStat(stat: WordStat | undefined): boolean {
   return isKnown(stat) && !isWeak(stat);
 }
 
+/** Sentence eligibility: known and not weak on the combined unordered-pair score. */
+export function isEligiblePair(
+  promptStat: WordStat | undefined,
+  answerStat: WordStat | undefined,
+): boolean {
+  return isEligibleStat(combinePairStat(promptStat, answerStat));
+}
+
 /**
- * Build in-memory indexes of study words that are eligible on both sides
- * (known for the unordered pair via each direction's threshold, and not weak)
- * and that have enough POS/grammar metadata for the current pair.
+ * Build in-memory indexes of study words that are eligible for sentences
+ * (combined A↔B score meets known and is not weak) and that have enough
+ * POS/grammar metadata for the current pair.
  */
 export function buildVocabIndex(
   studyEntries: readonly Entry[],
@@ -280,7 +288,7 @@ export function buildVocabIndex(
   for (const entry of studyEntries) {
     const pos = normalizePos(entry.pos);
     if (!pos) continue;
-    if (!isEligibleStat(promptStats.get(entry.id)) || !isEligibleStat(answerStats.get(entry.id))) continue;
+    if (!isEligiblePair(promptStats.get(entry.id), answerStats.get(entry.id))) continue;
 
     const meta = grammarForEntry(grammar, entry);
     const metaPos = meta?.pos ?? pos;
@@ -355,13 +363,13 @@ export function wordsNeededHint(ready: number, index: VocabIndex, minReady: numb
   const verbs = index.verbs.length;
   const adjs = index.adjectives.length;
   if (nouns === 0 && verbs === 0 && adjs === 0) {
-    return `Know a few more study words (nouns, verbs, or adjectives) both ways for this pair. About ${need} more sentences unlock the quiz.`;
+    return `Know a few more study words (nouns, verbs, or adjectives) for this pair. About ${need} more sentences unlock the quiz.`;
   }
   if (nouns === 0) {
-    return `Know at least one more noun both ways for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+    return `Know at least one more noun for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
   }
   if (verbs === 0 && adjs === 0) {
-    return `Know at least one more verb or adjective both ways for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
+    return `Know at least one more verb or adjective for this pair (${need} more sentence${need === 1 ? "" : "s"} needed).`;
   }
-  return `${ready} of ${minReady} sentences ready. Know a few more study words both ways for this pair to unlock.`;
+  return `${ready} of ${minReady} sentences ready. Know a few more study words for this pair to unlock.`;
 }

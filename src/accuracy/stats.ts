@@ -99,24 +99,57 @@ export function isKnown(stat: WordStat | undefined): boolean {
 }
 
 /**
- * Pair knowledge is unordered: a word is known for {A,B} only when both
- * direction docs (A→B and B→A) meet the per-direction known threshold.
- * EN–PL knowledge does not transfer to EN–DE; storage stays per-direction.
+ * Read-time merge of A→B and B→A stats for sentence quiz. Storage stays on
+ * per-direction docs (`accuracy/{from}_{to}`); this does not write or migrate.
+ * Sums lifetime counts, ORs manual marks, and concatenates recent windows
+ * oldest→newest by lastSeen (capped at RECENT_WINDOW) so known/weak thresholds
+ * apply to one combined score for the unordered pair.
+ */
+export function combinePairStat(
+  a: WordStat | undefined,
+  b: WordStat | undefined,
+): WordStat | undefined {
+  if (!a) return b;
+  if (!b) return a;
+
+  const older = a.lastSeen <= b.lastSeen ? a : b;
+  const newer = a.lastSeen <= b.lastSeen ? b : a;
+  const attemptsOldestFirst: boolean[] = [];
+  for (const side of [older, newer]) {
+    for (let i = side.windowLen - 1; i >= 0; i -= 1) {
+      attemptsOldestFirst.push(((side.windowBits >> i) & 1) === 1);
+    }
+  }
+  const recent = attemptsOldestFirst.slice(-RECENT_WINDOW);
+  let windowBits = 0;
+  for (const ok of recent) {
+    windowBits = (windowBits << 1) | (ok ? 1 : 0);
+  }
+
+  return {
+    correct: a.correct + b.correct,
+    attempts: a.attempts + b.attempts,
+    lastSeen: Math.max(a.lastSeen, b.lastSeen),
+    windowBits,
+    windowLen: recent.length,
+    manual: a.manual || b.manual,
+  };
+}
+
+/**
+ * Pair knowledge is unordered: merge A→B and B→A at read time, then apply the
+ * usual known threshold to that combined stat. EN–PL does not transfer to EN–DE.
  */
 export function isKnownPair(
   forward: WordStat | undefined,
   reverse: WordStat | undefined,
 ): boolean {
-  return isKnown(forward) && isKnown(reverse);
+  return isKnown(combinePairStat(forward, reverse));
 }
 
 export type PairKnownSummary = {
-  /** Known in both directions for this language pair. */
-  knownBoth: number;
-  /** Known in exactly one direction (needs the other side). */
-  knownOneWay: number;
-  knownForwardOnly: number;
-  knownReverseOnly: number;
+  /** Words known for this unordered pair (combined A↔B score). */
+  known: number;
 };
 
 /** Summarize pair-level known status from existing per-direction accuracy maps. */
@@ -125,22 +158,11 @@ export function summarizePairKnown(
   forward: ReadonlyMap<string, WordStat>,
   reverse: ReadonlyMap<string, WordStat>,
 ): PairKnownSummary {
-  let knownBoth = 0;
-  let knownForwardOnly = 0;
-  let knownReverseOnly = 0;
+  let known = 0;
   for (const id of ids) {
-    const a = isKnown(forward.get(id));
-    const b = isKnown(reverse.get(id));
-    if (a && b) knownBoth += 1;
-    else if (a) knownForwardOnly += 1;
-    else if (b) knownReverseOnly += 1;
+    if (isKnownPair(forward.get(id), reverse.get(id))) known += 1;
   }
-  return {
-    knownBoth,
-    knownOneWay: knownForwardOnly + knownReverseOnly,
-    knownForwardOnly,
-    knownReverseOnly,
-  };
+  return { known };
 }
 
 export function knownIdSet(stats: ReadonlyMap<string, WordStat>): Set<string> {
@@ -182,9 +204,9 @@ export function weakCount(pool: readonly { id: string }[], stats: ReadonlyMap<st
 }
 
 /**
- * Weak focus stays on the selected quiz direction (from→to). Pair-known
- * (both ways) is a separate concept used by sentence quiz and known counts —
- * one-way gaps are nudged there, not folded into weak selection.
+ * Weak focus stays on the selected quiz direction (from→to). Sentence quiz
+ * uses combinePairStat for known/weak/eligibility on the unordered pair;
+ * flashcard Weak words does not use that helper.
  */
 export function focusHint(focus: "all" | "weak", weak: number): string {
   if (focus === "all") return "Every card in this band can come up.";
