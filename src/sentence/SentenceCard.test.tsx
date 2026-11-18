@@ -49,4 +49,40 @@ describe("SentenceCard", () => {
     expect(html).toContain("know both ways for this pair");
     expect(html).toContain("German–French");
   });
+
+  it("labels one-way gaps for Chinese and Japanese pairs", () => {
+    const zh = renderToStaticMarkup(
+      <SentenceCard
+        from="en"
+        to="zh"
+        loading={false}
+        error={null}
+        knownBoth={0}
+        knownOneWay={1}
+        knownForwardOnly={1}
+        knownReverseOnly={0}
+        ready={0}
+        onOpen={() => undefined}
+      />,
+    );
+    expect(zh).toContain("English–Chinese");
+    expect(zh).toContain("English→Chinese only");
+
+    const ja = renderToStaticMarkup(
+      <SentenceCard
+        from="ja"
+        to="en"
+        loading={false}
+        error={null}
+        knownBoth={0}
+        knownOneWay={1}
+        knownForwardOnly={0}
+        knownReverseOnly={1}
+        ready={0}
+        onOpen={() => undefined}
+      />,
+    );
+    expect(ja).toContain("Japanese–English");
+    expect(ja).toContain("English→Japanese only");
+  });
 });
