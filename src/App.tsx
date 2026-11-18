@@ -305,7 +305,13 @@ export function Home({
               <button
                 key={range.id}
                 type="button"
-                className={settings.range === range.id ? "chip on" : "chip"}
+                className={[
+                  "chip",
+                  range.id === "mine" ? "chip-mine" : "",
+                  settings.range === range.id ? "on" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 aria-pressed={settings.range === range.id}
                 onClick={() => setSettings({ ...settings, range: range.id })}
               >

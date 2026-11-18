@@ -79,6 +79,7 @@ describe("Home practice source", () => {
     const chips = [...container.querySelectorAll(".chips .chip")].map((item) => item.textContent);
     expect(chips[0]).toBe("My words (12)");
     expect(chips).toContain("First 100");
+    expect(container.querySelector(".chips .chip-mine")?.textContent).toBe("My words (12)");
     expect(container.querySelector(".mine-select")).toBeNull();
     expect(container.querySelector(".primary")?.textContent).toBe("Start quiz · First 100");
   });
