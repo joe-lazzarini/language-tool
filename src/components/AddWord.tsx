@@ -69,6 +69,8 @@ export function AddWord({
   initial,
   onSave,
   onCancel,
+  onViewList,
+  onQuizMyWords,
   lookup = lookupWord,
 }: {
   deck: Entry[];
@@ -77,6 +79,8 @@ export function AddWord({
   initial?: CustomWord | null;
   onSave: (word: CustomWord) => Promise<void> | void;
   onCancel: () => void;
+  onViewList?: () => void;
+  onQuizMyWords?: (word: CustomWord) => void;
   lookup?: typeof lookupWord;
 }) {
   const editing = Boolean(initial);
@@ -94,6 +98,7 @@ export function AddWord({
   const [looking, setLooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedWord, setSavedWord] = useState<CustomWord | null>(null);
   const [revealed, setRevealed] = useState(editing);
   const queryRef = useRef<HTMLInputElement>(null);
   const focusRef = useRef<HTMLInputElement | null>(null);
@@ -195,11 +200,57 @@ export function AddWord({
         createdAt: initial?.createdAt,
       });
       await onSave(word);
+      setSavedWord(word);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save that word.");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (savedWord) {
+    return (
+      <div className="stack">
+        <header className="hero compact">
+          <p className="eyebrow">Saved</p>
+          <h1>Word saved</h1>
+          <p className="lede">
+            Added to My words for {pairNames(from, to)}. Quiz just your cards, open the list, or add another.
+          </p>
+        </header>
+        <section className="panel">
+          <div className="actions">
+            {onQuizMyWords ? (
+              <button type="button" className="primary" onClick={() => onQuizMyWords(savedWord)}>
+                Quiz my words
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="mine-list"
+              onClick={() => (onViewList ? onViewList() : onCancel())}
+            >
+              Your words
+            </button>
+            <button
+              type="button"
+              className="mine-add"
+              onClick={() => {
+                setSavedWord(null);
+                setQuery("");
+                setForms(emptyForms());
+                setNotes([]);
+                setRevealed(false);
+                setPos("noun");
+                setError(null);
+              }}
+            >
+              Add another
+            </button>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   return (

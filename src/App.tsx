@@ -32,6 +32,13 @@ import {
   pairNames,
   SPECIAL_LETTERS,
 } from "./lib/languages";
+import {
+  otherPairsWithWords,
+  practiceRanges,
+  rangeChoiceLabel,
+  startActionLabel,
+  type OtherPairWords,
+} from "./lib/practiceSetup";
 import { focusHint, selectCards, weakCount } from "./accuracy/stats";
 import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
@@ -123,12 +130,13 @@ function LanguagePicker({
   );
 }
 
-function Home({
+export function Home({
   settings,
   setSettings,
   pairCount,
   pool,
   customCount,
+  otherPairs,
   weakInBand,
   sentence,
   onStart,
@@ -141,6 +149,7 @@ function Home({
   pairCount: number;
   pool: number;
   customCount: number;
+  otherPairs: OtherPairWords[];
   weakInBand: number;
   sentence: {
     loading: boolean;
@@ -156,6 +165,8 @@ function Home({
   onSentence: () => void;
 }) {
   const sameLanguage = settings.from === settings.to;
+  const mineEmpty = settings.range === "mine" && customCount === 0;
+  const startLabel = startActionLabel(settings.mode, settings.range, customCount);
 
   function setFrom(from: LangCode) {
     const to = from === settings.to ? otherLanguage(from) : settings.to;
@@ -171,6 +182,22 @@ function Home({
     setSettings({ ...settings, from: settings.to, to: settings.from });
   }
 
+  function switchPair(pair: OtherPairWords["pair"]) {
+    const [a, b] = pair;
+    // Prefer keeping the current prompt language when it is on the target pair.
+    if (settings.from === a || settings.from === b) {
+      const to = settings.from === a ? b : a;
+      setSettings({ ...settings, from: settings.from, to, range: "mine" });
+      return;
+    }
+    if (settings.to === a || settings.to === b) {
+      const from = settings.to === a ? b : a;
+      setSettings({ ...settings, from, to: settings.to, range: "mine" });
+      return;
+    }
+    setSettings({ ...settings, from: a, to: b, range: "mine" });
+  }
+
   return (
     <div className="stack">
       <header className="hero">
@@ -183,35 +210,13 @@ function Home({
       </header>
 
       <section className="panel">
-        <div className={settings.range === "mine" ? "mine-card on" : "mine-card"}>
-          <button
-            type="button"
-            className="mine-select"
-            aria-pressed={settings.range === "mine"}
-            onClick={() => setSettings({ ...settings, range: "mine" })}
-          >
-            <span className="mine-card-title">
-              My words
-              <span className="mine-pair"> · {pairNames(settings.from, settings.to)}</span>
-              {settings.range === "mine" ? <span className="mine-selected">Selected</span> : null}
-            </span>
-            <span className="mine-card-hint">
-              {customCount === 0
-                ? "No saved words for this pair yet"
-                : `${customCount} saved ${customCount === 1 ? "word" : "words"}`}
-            </span>
-            <span className="mine-count" aria-hidden="true">
-              {customCount}
-            </span>
+        <div className="tool-row words-tools">
+          <button type="button" className="mine-add" onClick={onAdd}>
+            Add a word
           </button>
-          <div className="tool-row">
-            <button type="button" className="mine-add" onClick={onAdd}>
-              Add a word
-            </button>
-            <button type="button" className="mine-list" onClick={onList}>
-              Your words{customCount ? ` (${customCount})` : ""}
-            </button>
-          </div>
+          <button type="button" className="mine-list" onClick={onList}>
+            Your words{customCount ? ` (${customCount})` : ""}
+          </button>
         </div>
 
         <SentenceCard
@@ -290,18 +295,23 @@ function Home({
 
         <div className="field">
           <span className="label">Which words</span>
-          <div className="chips">
-            {RANGES.filter((range) => range.id !== "mine").map((range) => (
+          <div className="chips" role="group" aria-label="Practice from">
+            {practiceRanges().map((range) => (
               <button
                 key={range.id}
                 type="button"
                 className={settings.range === range.id ? "chip on" : "chip"}
+                aria-pressed={settings.range === range.id}
                 onClick={() => setSettings({ ...settings, range: range.id })}
               >
-                {range.label}
+                {rangeChoiceLabel(range.id, customCount)}
               </button>
             ))}
           </div>
+          <p className="hint">
+            Practice from {rangeChoiceLabel(settings.range, customCount)}
+            {settings.range === "mine" ? ` for ${pairNames(settings.from, settings.to)}` : ""}.
+          </p>
         </div>
 
         <div className="field">
@@ -330,9 +340,39 @@ function Home({
           </p>
         </div>
 
-        <button type="button" className="primary" onClick={onStart} disabled={pool === 0 || sameLanguage}>
-          Start {settings.mode === "quiz" ? "quiz" : "study"}
-        </button>
+        {mineEmpty ? (
+          <div className="mine-empty" role="status">
+            <p className="mine-empty-title">No words for {pairNames(settings.from, settings.to)} yet</p>
+            <p className="hint">
+              Words you add are kept per language pair. Add one for this prompt and answer pair, or switch to a
+              pair that already has saved words.
+            </p>
+            {otherPairs.length > 0 ? (
+              <div className="field">
+                <span className="label">Saved on other pairs</span>
+                <div className="chips">
+                  {otherPairs.map((item) => (
+                    <button
+                      key={`${item.pair[0]}-${item.pair[1]}`}
+                      type="button"
+                      className="chip"
+                      onClick={() => switchPair(item.pair)}
+                    >
+                      {item.label} ({item.count})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <button type="button" className="mine-add" onClick={onAdd}>
+              Add a word
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="primary" onClick={onStart} disabled={pool === 0 || sameLanguage}>
+            {startLabel}
+          </button>
+        )}
       </section>
     </div>
   );
@@ -687,6 +727,10 @@ export function App() {
     () => customWordsForPair(wordsApi.words, settings.from, settings.to),
     [wordsApi.words, settings.from, settings.to],
   );
+  const otherPairs = useMemo(
+    () => otherPairsWithWords(wordsApi.words, settings.from, settings.to),
+    [wordsApi.words, settings.from, settings.to],
+  );
   const customEntries = useMemo(() => pairWords.map(toEntry), [pairWords]);
   const studyEntries = useMemo(
     () => (catalog ? withCustomEntries(entries, customEntries) : customEntries),
@@ -713,6 +757,23 @@ export function App() {
   function start() {
     const band = wordsForRange(pairEntries, settings.range);
     setSession(selectCards(band, accuracy.read(settings.from, settings.to), settings.focus, settings.size));
+  }
+
+  /** Quiz only the user's words for the current pair (Weak focus still applies). */
+  function quizMyWords(extra?: CustomWord) {
+    const next: Settings = { ...settings, range: "mine", mode: "quiz" };
+    setSettings(next);
+    const customs = customWordsForPair(wordsApi.words, settings.from, settings.to).map(toEntry);
+    if (extra && !customs.some((entry) => entry.id === extra.id)) customs.push(toEntry(extra));
+    const usable = entriesForPair(customs, settings.from, settings.to);
+    const band = wordsForRange(usable, "mine");
+    if (band.length === 0) {
+      setSession(null);
+      setScreen("home");
+      return;
+    }
+    setSession(selectCards(band, accuracy.read(settings.from, settings.to), next.focus, next.size));
+    setScreen("home");
   }
 
   function openSentence() {
@@ -750,6 +811,7 @@ export function App() {
             pairCount={pairEntries.length}
             pool={pool}
             customCount={pairWords.length}
+            otherPairs={otherPairs}
             weakInBand={weakCount(wordsForRange(pairEntries, settings.range), accuracy.read(settings.from, settings.to))}
             sentence={sentenceStatus}
             onStart={start}
@@ -777,8 +839,9 @@ export function App() {
             onSave={async (word) => {
               await wordsApi.saveWord(word);
               setEditing(null);
-              setScreen("list");
             }}
+            onViewList={() => setScreen("list")}
+            onQuizMyWords={(word) => quizMyWords(word)}
           />
         )}
         {!session && screen === "list" && (
@@ -795,6 +858,7 @@ export function App() {
               setScreen("add");
             }}
             onDelete={(id) => void wordsApi.deleteWord(id)}
+            onQuizMyWords={() => quizMyWords()}
             onBack={() => setScreen("home")}
           />
         )}
