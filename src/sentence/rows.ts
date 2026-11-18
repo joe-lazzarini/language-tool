@@ -3,7 +3,7 @@ import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import { slotLabel } from "./generate";
 import type { GrammarFile, SlotWord } from "./types";
-import { buildVocabIndex, isEligibleStat, listGrammarCandidates } from "./vocab";
+import { buildVocabIndex, isEligiblePair, listGrammarCandidates } from "./vocab";
 
 export type SentenceWordRow = {
   id: string;
@@ -16,7 +16,7 @@ export type SentenceWordRow = {
   answerKnown: boolean;
   promptManual: boolean;
   answerManual: boolean;
-  /** True when known both ways for this pair (independent of weak). */
+  /** True when the combined unordered-pair score meets known (independent of weak). */
   pairKnown: boolean;
   eligible: boolean;
 };
@@ -62,8 +62,9 @@ export function sentenceRows(
   for (const entry of candidates) {
     const prompt = sideState(promptStats, entry.id);
     const answer = sideState(answerStats, entry.id);
+    const pairKnown = isKnownPair(answerStats.get(entry.id), promptStats.get(entry.id));
     // Lobby lists words you have practiced or added — not the entire deck.
-    if (!entry.custom && !prompt.known && !answer.known) continue;
+    if (!entry.custom && !pairKnown && !prompt.known && !answer.known) continue;
     const display = displaySlot(entry, grammar, promptLang, answerLang);
     if (!display) continue;
     rows.push({
@@ -75,8 +76,8 @@ export function sentenceRows(
       answerKnown: answer.known,
       promptManual: prompt.manual,
       answerManual: answer.manual,
-      pairKnown: isKnownPair(answerStats.get(entry.id), promptStats.get(entry.id)),
-      eligible: isEligibleStat(promptStats.get(entry.id)) && isEligibleStat(answerStats.get(entry.id)),
+      pairKnown,
+      eligible: isEligiblePair(promptStats.get(entry.id), answerStats.get(entry.id)),
     });
   }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   STAT_CAP,
+  combinePairStat,
   dirKey,
   docToStats,
   focusHint,
@@ -29,6 +30,10 @@ function missed(now = 1): WordStat {
 
 function solid(now = 1): WordStat {
   return recordAttempt(recordAttempt(undefined, true, now), true, now + 1);
+}
+
+function once(now = 1): WordStat {
+  return recordAttempt(undefined, true, now);
 }
 
 describe("recordAttempt", () => {
@@ -70,61 +75,67 @@ describe("isKnown", () => {
   });
 });
 
-describe("isKnownPair / summarizePairKnown", () => {
-  it("treats one-direction knowledge as not known for the pair", () => {
+describe("combinePairStat / isKnownPair / summarizePairKnown", () => {
+  it("lets one strong direction decide when the other is unseen", () => {
     const forward = solid();
-    expect(isKnownPair(forward, undefined)).toBe(false);
-    expect(isKnownPair(undefined, forward)).toBe(false);
-    expect(isKnownPair(forward, missed())).toBe(false);
+    expect(isKnownPair(forward, undefined)).toBe(true);
+    expect(isKnownPair(undefined, forward)).toBe(true);
+
+    const combined = combinePairStat(forward, undefined);
+    expect(combined).toEqual(forward);
+    expect(isKnown(combined)).toBe(true);
+
+    // A newer miss on the other side breaks the combined recent streak.
+    expect(isKnownPair(forward, missed(100))).toBe(false);
   });
 
-  it("treats both-direction knowledge as known for the pair", () => {
+  it("sums attempts/correct and merges recent windows across directions", () => {
+    const older = once(1);
+    const newer = once(10);
+    const combined = combinePairStat(older, newer)!;
+    expect(combined.correct).toBe(2);
+    expect(combined.attempts).toBe(2);
+    expect(combined.lastSeen).toBe(10);
+    expect(combined.windowLen).toBe(2);
+    expect(combined.windowBits & 0b11).toBe(0b11);
+    expect(isKnown(combined)).toBe(true);
+    expect(isKnownPair(older, newer)).toBe(true);
+  });
+
+  it("ORs manual marks and keeps pairs independent via separate direction maps", () => {
+    expect(isKnownPair(withManual(undefined, true, 1)!, undefined)).toBe(true);
     expect(isKnownPair(solid(), solid(10))).toBe(true);
-    expect(isKnownPair(withManual(undefined, true, 1)!, solid())).toBe(true);
-  });
 
-  it("keeps different language pairs independent via separate direction maps", () => {
     const enPlForward = new Map<string, WordStat>([["cat", solid()]]);
-    const enPlReverse = new Map<string, WordStat>([["cat", solid(5)]]);
-    const enDeForward = new Map<string, WordStat>([["cat", solid(20)]]);
+    const enPlReverse = new Map<string, WordStat>();
+    const enDeForward = new Map<string, WordStat>([["cat", once(20)]]);
     const enDeReverse = new Map<string, WordStat>();
 
     expect(isKnownPair(enPlForward.get("cat"), enPlReverse.get("cat"))).toBe(true);
     expect(isKnownPair(enDeForward.get("cat"), enDeReverse.get("cat"))).toBe(false);
 
-    expect(summarizePairKnown(["cat", "dog"], enPlForward, enPlReverse)).toEqual({
-      knownBoth: 1,
-      knownOneWay: 0,
-      knownForwardOnly: 0,
-      knownReverseOnly: 0,
-    });
-    expect(summarizePairKnown(["cat", "dog"], enDeForward, enDeReverse)).toEqual({
-      knownBoth: 0,
-      knownOneWay: 1,
-      knownForwardOnly: 1,
-      knownReverseOnly: 0,
-    });
+    expect(summarizePairKnown(["cat", "dog"], enPlForward, enPlReverse)).toEqual({ known: 1 });
+    expect(summarizePairKnown(["cat", "dog"], enDeForward, enDeReverse)).toEqual({ known: 0 });
   });
 
-  it("counts one-way vs both-ways from existing per-direction docs", () => {
+  it("counts combined known words from existing per-direction docs", () => {
     const forward = new Map<string, WordStat>([
       ["both", solid()],
       ["fwd", solid(3)],
+      ["split", once(1)],
       ["neither", missed()],
     ]);
     const reverse = new Map<string, WordStat>([
       ["both", solid(8)],
       ["rev", solid(9)],
+      ["split", once(2)],
     ]);
-    expect(summarizePairKnown(["both", "fwd", "rev", "neither"], forward, reverse)).toEqual({
-      knownBoth: 1,
-      knownOneWay: 2,
-      knownForwardOnly: 1,
-      knownReverseOnly: 1,
+    expect(summarizePairKnown(["both", "fwd", "rev", "split", "neither"], forward, reverse)).toEqual({
+      known: 4,
     });
   });
 
-  it("uses the same pair rules for zh/ja direction keys and docs", () => {
+  it("uses the same combined rules for zh/ja direction keys and docs", () => {
     expect(dirKey("en", "zh")).toBe("en_zh");
     expect(dirKey("zh", "en")).toBe("zh_en");
     expect(dirKey("ja", "en")).toBe("ja_en");
@@ -132,18 +143,23 @@ describe("isKnownPair / summarizePairKnown", () => {
     expect(parseDirKey("ja_en")).toEqual(["ja", "en"]);
 
     const enZh = new Map<string, WordStat>([["see", solid()]]);
-    const zhEn = new Map<string, WordStat>([["see", solid(2)]]);
-    const enJa = new Map<string, WordStat>([["see", solid(3)]]);
-    const jaEn = new Map<string, WordStat>();
+    const zhEn = new Map<string, WordStat>();
+    const enJa = new Map<string, WordStat>([["see", once(3)]]);
+    const jaEn = new Map<string, WordStat>([["see", once(4)]]);
 
     expect(isKnownPair(enZh.get("see"), zhEn.get("see"))).toBe(true);
-    expect(isKnownPair(enJa.get("see"), jaEn.get("see"))).toBe(false);
-    expect(summarizePairKnown(["see"], enJa, jaEn)).toEqual({
-      knownBoth: 0,
-      knownOneWay: 1,
-      knownForwardOnly: 1,
-      knownReverseOnly: 0,
-    });
+    expect(isKnownPair(enJa.get("see"), jaEn.get("see"))).toBe(true);
+    expect(summarizePairKnown(["see"], enJa, jaEn)).toEqual({ known: 1 });
+  });
+
+  it("applies weak thresholds to the combined score", () => {
+    const a = missed(1);
+    const b = missed(2);
+    const combined = combinePairStat(a, b)!;
+    expect(combined.attempts).toBe(2);
+    expect(combined.correct).toBe(0);
+    expect(isWeak(combined)).toBe(true);
+    expect(isKnownPair(a, b)).toBe(false);
   });
 });
 

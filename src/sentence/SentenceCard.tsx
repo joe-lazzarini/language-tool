@@ -1,28 +1,9 @@
-import { languageName, pairNames, type LangCode } from "../lib/languages";
+import { pairNames, type LangCode } from "../lib/languages";
 import { MIN_READY_SENTENCES } from "./generate";
 
-function pairKnownHint(
-  from: LangCode,
-  to: LangCode,
-  knownBoth: number,
-  knownOneWay: number,
-  knownForwardOnly: number,
-  knownReverseOnly: number,
-): string {
-  const knownNoun = knownBoth === 1 ? "word" : "words";
-  let hint = `${knownBoth} known ${knownNoun} for this pair`;
-  if (knownOneWay > 0) {
-    const oneWayNoun = knownOneWay === 1 ? "word is" : "words are";
-    const parts: string[] = [];
-    if (knownForwardOnly > 0) {
-      parts.push(`${knownForwardOnly} ${languageName(from)}→${languageName(to)} only`);
-    }
-    if (knownReverseOnly > 0) {
-      parts.push(`${knownReverseOnly} ${languageName(to)}→${languageName(from)} only`);
-    }
-    hint += `; ${knownOneWay} ${oneWayNoun} known one way (${parts.join(", ")}) — practice the other direction`;
-  }
-  return `${hint}. ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
+function pairKnownHint(known: number): string {
+  const knownNoun = known === 1 ? "word" : "words";
+  return `${known} known ${knownNoun} for this pair. ${MIN_READY_SENTENCES} sentences unlock the quiz.`;
 }
 
 export function SentenceCard({
@@ -30,10 +11,7 @@ export function SentenceCard({
   to,
   loading,
   error,
-  knownBoth,
-  knownOneWay,
-  knownForwardOnly,
-  knownReverseOnly,
+  known,
   ready,
   unlockHint = "",
   onOpen,
@@ -42,20 +20,17 @@ export function SentenceCard({
   to: LangCode;
   loading: boolean;
   error: string | null;
-  knownBoth: number;
-  knownOneWay: number;
-  knownForwardOnly: number;
-  knownReverseOnly: number;
+  known: number;
   ready: number;
   unlockHint?: string;
   onOpen: () => void;
 }) {
   const unlocked = ready >= MIN_READY_SENTENCES;
-  const counts = pairKnownHint(from, to, knownBoth, knownOneWay, knownForwardOnly, knownReverseOnly);
+  const counts = pairKnownHint(known);
   let hint = counts;
   if (error) hint = error;
   else if (loading) hint = "Loading sentence patterns…";
-  else if (unlocked) hint = `${ready} sentences ready from study words you know both ways for this pair.`;
+  else if (unlocked) hint = `${ready} sentences ready from study words you know for this pair.`;
   else if (unlockHint) hint = `${counts} ${unlockHint}`;
 
   return (

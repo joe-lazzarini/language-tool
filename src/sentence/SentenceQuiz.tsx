@@ -76,10 +76,7 @@ function WordGroups({
                     <span aria-hidden="true">→</span>
                     <span lang={languageByCode(to).locale}>{row.answer}</span>
                     {row.eligible ? <span className="pos"> in sentences</span> : null}
-                    {!row.eligible && row.pairKnown ? <span className="pos"> known both ways</span> : null}
-                    {!row.pairKnown && (row.promptKnown || row.answerKnown) ? (
-                      <span className="pos"> one way only</span>
-                    ) : null}
+                    {!row.eligible && row.pairKnown ? <span className="pos"> known</span> : null}
                   </p>
                   <div className="tool-row">
                     <KnownButton
@@ -552,10 +549,10 @@ export function SentenceQuiz({
         <p className="eyebrow">Sentence quiz</p>
         <h1>{pairLabel(from, to)}</h1>
         <p className="lede">
-          Sentences use study words known both ways for this language pair and not weak — structure
-          varies with your vocabulary size and accuracy. Two correct answers in a row in a direction,
-          or a mark here, counts for that direction; the word is known for the pair only when both
-          directions qualify. Weak words stay out until they improve.
+          Sentences use study words you know for this language pair and that are not weak — structure
+          varies with your vocabulary size and accuracy. Practice in either direction counts toward
+          one combined score for the pair (attempts and recent streak are merged at read time). Weak
+          words stay out until they improve.
         </p>
       </header>
       <section className="panel">
