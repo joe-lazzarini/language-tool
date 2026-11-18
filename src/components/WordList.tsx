@@ -9,6 +9,7 @@ export function WordList({
   onEdit,
   onDelete,
   onAdd,
+  onQuizMyWords,
   onBack,
 }: {
   words: CustomWord[];
@@ -17,6 +18,7 @@ export function WordList({
   onEdit: (word: CustomWord) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
+  onQuizMyWords?: () => void;
   onBack: () => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -47,6 +49,11 @@ export function WordList({
       </header>
       <section className="panel">
         <div className="actions">
+          {words.length > 0 && onQuizMyWords ? (
+            <button type="button" className="primary" onClick={onQuizMyWords}>
+              Quiz my words
+            </button>
+          ) : null}
           <button type="button" className="mine-add" onClick={onAdd}>
             Add a word
           </button>

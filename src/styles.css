@@ -540,92 +540,8 @@ a {
   color: var(--ink-soft);
 }
 
-.mine-card {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 16px;
-  background: var(--mine-bg);
-  border: 2px solid var(--mine-line);
-  color: var(--mine-ink);
-}
-
-.mine-card.on {
-  background: var(--mine);
-  border-color: var(--mine);
-  color: var(--mine-on);
-}
-
-.mine-select {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "title count"
-    "hint count";
-  column-gap: 12px;
-  row-gap: 2px;
-  align-items: center;
-  width: 100%;
-  padding: 2px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.mine-card-title {
-  grid-area: title;
-  font-family: var(--font-display);
-  font-size: 1.7rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-}
-
-.mine-pair {
-  font-family: var(--font-sans);
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  opacity: 0.78;
-  white-space: nowrap;
-}
-
-.mine-selected {
-  margin-left: 8px;
-  font-family: var(--font-sans);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  vertical-align: 0.2em;
-}
-
-.mine-card-hint {
-  grid-area: hint;
-  font-size: 0.92rem;
-}
-
-.mine-count {
-  grid-area: count;
-  min-width: 2.6rem;
-  height: 2.6rem;
-  padding: 0 0.7rem;
-  display: inline-grid;
-  place-items: center;
-  justify-self: end;
-  border-radius: 999px;
-  background: var(--mine);
-  color: var(--mine-on);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  font-size: 1.05rem;
-}
-
-.mine-card.on .mine-count {
-  background: var(--mine-on);
-  color: var(--mine-ink);
+.words-tools {
+  margin: 0 0 4px;
 }
 
 .mine-add,
@@ -648,45 +564,44 @@ a {
   color: var(--mine-ink);
 }
 
-.mine-card.on .mine-add {
-  background: var(--mine-on);
-  color: var(--mine-ink);
-}
-
-.mine-card.on .mine-list {
-  background: transparent;
-  border-color: rgba(244, 255, 252, 0.7);
-  color: var(--mine-on);
-}
-
-.mine-select:hover {
-  background: rgba(10, 92, 86, 0.08);
-}
-
-.mine-card.on .mine-select:hover {
-  background: rgba(244, 255, 252, 0.08);
-}
-
 .mine-add:hover,
 .mine-list:hover {
   transform: translateY(-1px);
 }
 
-.mine-select:focus-visible,
 .mine-add:focus-visible,
 .mine-list:focus-visible {
   outline: 3px solid var(--mine);
   outline-offset: 2px;
 }
 
-.mine-card.on .mine-select:focus-visible,
-.mine-card.on .mine-add:focus-visible,
-.mine-card.on .mine-list:focus-visible {
-  outline-color: var(--mine-on);
+.actions .mine-add,
+.actions .mine-list,
+.actions .primary {
+  flex: 1 1 10rem;
 }
 
-.actions .mine-add {
-  width: 100%;
+.mine-empty {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--mine-bg);
+  border: 2px solid var(--mine-line);
+  color: var(--mine-ink);
+}
+
+.mine-empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.mine-empty .mine-add {
+  justify-self: start;
 }
 
 .sentence-card {
