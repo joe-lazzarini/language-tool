@@ -12,6 +12,10 @@ import {
   SPECIAL_LETTERS,
   type LangCode,
 } from "../lib/languages";
+import {
+  uniqueMissedSentences,
+  uniqueMissedSentenceWords,
+} from "../lib/sessionResults";
 import type { Entry } from "../types";
 import { gradeSentence, type GradePart } from "./check";
 import {
@@ -156,12 +160,16 @@ export function SentenceQuiz({
   const [revealed, setRevealed] = useState(false);
   const [correct, setCorrect] = useState<boolean | null>(null);
   const [gradeParts, setGradeParts] = useState<GradePart[] | null>(null);
-  const [results, setResults] = useState<{ sentence: PracticeSentence; correct: boolean; given: string }[]>([]);
+  const [results, setResults] = useState<
+    { sentence: PracticeSentence; correct: boolean; given: string; wrongTokens?: string[] }[]
+  >([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
   const nextRef = useRef<() => void>(() => {});
   const composingRef = useRef(false);
+  const resultsRef = useRef<typeof results>([]);
+  const indexRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,6 +208,12 @@ export function SentenceQuiz({
     return sentenceRows(studyEntries, grammar, from, to, promptStats, answerStats);
   }, [grammar, studyEntries, from, to, promptStats, answerStats]);
 
+  const entriesById = useMemo(() => {
+    const map = new Map<string, Entry>();
+    for (const entry of studyEntries) map.set(entry.id, entry);
+    return map;
+  }, [studyEntries]);
+
   useEffect(() => {
     if (phase === "round") inputRef.current?.focus();
   }, [phase, index, done]);
@@ -219,11 +233,13 @@ export function SentenceQuiz({
     setPreviousIds(new Set(next.map((item) => item.id)));
     setPreviousStructures(new Set(next.map((item) => item.structure)));
     setRound(next);
+    indexRef.current = 0;
     setIndex(0);
     setInput("");
     setRevealed(false);
     setCorrect(null);
     setGradeParts(null);
+    resultsRef.current = [];
     setResults([]);
     setDone(false);
     setPhase("round");
@@ -231,6 +247,17 @@ export function SentenceQuiz({
 
   const sentence = round[index];
   const specials = SPECIAL_LETTERS[to] ?? [];
+
+  function commitSentenceResult(
+    item: PracticeSentence,
+    ok: boolean,
+    given: string,
+    wrongTokens?: string[],
+  ) {
+    const row = { sentence: item, correct: ok, given, wrongTokens };
+    resultsRef.current = [...resultsRef.current, row];
+    setResults(resultsRef.current);
+  }
 
   function insertLetter(letter: string) {
     const field = inputRef.current;
@@ -255,7 +282,8 @@ export function SentenceQuiz({
     setCorrect(grade.correct);
     setGradeParts(grade.correct ? null : grade.parts);
     setRevealed(true);
-    setResults((prev) => [...prev, { sentence, correct: grade.correct, given: given.trim() }]);
+    const wrongTokens = grade.correct ? undefined : grade.parts.filter((part) => !part.ok).map((part) => part.text);
+    commitSentenceResult(sentence, grade.correct, given.trim(), wrongTokens);
   }
 
   function skip() {
@@ -264,19 +292,33 @@ export function SentenceQuiz({
     // Skip with no typed answer: show the reference without a full-token mismatch highlight.
     setGradeParts(null);
     setRevealed(true);
-    setResults((prev) => [...prev, { sentence, correct: false, given: input.trim() }]);
+    commitSentenceResult(sentence, false, input.trim());
+  }
+
+  function finish() {
+    setResults(resultsRef.current);
+    setDone(true);
   }
 
   function next() {
-    if (index + 1 >= round.length) {
-      setDone(true);
+    if (indexRef.current + 1 >= round.length) {
+      finish();
       return;
     }
-    setIndex((value) => value + 1);
+    indexRef.current += 1;
+    setIndex(indexRef.current);
     setInput("");
     setRevealed(false);
     setCorrect(null);
     setGradeParts(null);
+  }
+
+  function requestExit() {
+    if (resultsRef.current.length > 0) {
+      finish();
+      return;
+    }
+    setPhase("lobby");
   }
 
   nextRef.current = next;
@@ -341,30 +383,45 @@ export function SentenceQuiz({
   }
 
   if (phase === "round" && done) {
-    const right = results.filter((item) => item.correct).length;
-    const missed = results.filter((item) => !item.correct);
+    const scored = resultsRef.current.length > 0 ? resultsRef.current : results;
+    const right = scored.filter((item) => item.correct).length;
+    const missed = uniqueMissedSentences(scored);
+    const missedWords = uniqueMissedSentenceWords(scored, entriesById, from, to);
     return (
       <div className="stack">
         <header className="hero compact">
           <p className="eyebrow">Sentence quiz</p>
           <h1>
-            {right} / {results.length}
+            {right} / {scored.length}
           </h1>
           <p className="lede">
-            {right === results.length
+            {right === scored.length
               ? "Every sentence matched."
               : "Review the misses, then try another set."}
           </p>
         </header>
         {missed.length > 0 && (
           <section className="panel">
-            <h2>Missed</h2>
+            <h2>Missed ({missed.length})</h2>
             <ul className="misses">
-              {missed.map((item) => (
-                <li key={item.sentence.id}>
+              {missed.map((item, missIndex) => (
+                <li key={`${item.sentence.id}-${missIndex}`}>
                   <strong>{item.sentence.accepted[0]}</strong>
                   <span>{item.sentence.prompt}</span>
                   {item.given ? <em>you: {item.given}</em> : <em>skipped</em>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {missedWords.length > 0 && (
+          <section className="panel">
+            <h2>Words to review ({missedWords.length})</h2>
+            <ul className="misses">
+              {missedWords.map((item, missIndex) => (
+                <li key={`${item.id}-${missIndex}`}>
+                  <strong>{item.answer}</strong>
+                  <span>{item.prompt}</span>
                 </li>
               ))}
             </ul>
@@ -384,7 +441,7 @@ export function SentenceQuiz({
     return (
       <div className="stack session">
         <div className="topbar">
-          <button type="button" className="ghost" onClick={() => setPhase("lobby")}>
+          <button type="button" className="ghost" onClick={requestExit}>
             Exit
           </button>
           <p className="progress-label">

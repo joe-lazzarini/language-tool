@@ -44,6 +44,7 @@ import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "./lib/ime";
 import { isCorrectAnswer } from "./lib/match";
+import { scoreSummary } from "./lib/sessionResults";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
 import { useSentenceStatus } from "./sentence/useSentenceStatus";
@@ -407,6 +408,9 @@ export function Session({
   const heldKeys = useRef(new Map<string, AdvanceKeyHold>());
   const nextRef = useRef<() => void>(() => {});
   const composingRef = useRef(false);
+  /** Mirrors results so Finish / Exit never read a stale closure array. */
+  const resultsRef = useRef<CardResult[]>([]);
+  const indexRef = useRef(0);
 
   const word = words[index];
   const total = words.length;
@@ -421,6 +425,13 @@ export function Session({
   useEffect(() => {
     if (revealed) inputRef.current?.blur();
   }, [revealed]);
+
+  function commitResult(entry: Entry, ok: boolean, given: string) {
+    const row: CardResult = { word: entry, correct: ok, given };
+    resultsRef.current = [...resultsRef.current, row];
+    setResults(resultsRef.current);
+    onGraded?.(entry.id, ok);
+  }
 
   function insertLetter(letter: string) {
     const field = inputRef.current;
@@ -444,29 +455,40 @@ export function Session({
     const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     setCorrect(ok);
     setRevealed(true);
-    setResults((prev) => [...prev, { word, correct: ok, given: given.trim() }]);
-    onGraded?.(word.id, ok);
+    commitResult(word, ok, given.trim());
   }
 
   function reveal() {
     if (!word || revealed) return;
-    setCorrect(null);
+    // Study reveal / quiz skip both mean "not known" — record as a miss.
+    setCorrect(mode === "quiz" ? false : null);
     setRevealed(true);
-    if (mode === "quiz") {
-      setResults((prev) => [...prev, { word, correct: false, given: input.trim() }]);
-      onGraded?.(word.id, false);
-    }
+    commitResult(word, false, input.trim());
+  }
+
+  function finish() {
+    setResults(resultsRef.current);
+    setDone(true);
   }
 
   function next() {
-    if (index + 1 >= total) {
-      setDone(true);
+    if (indexRef.current + 1 >= total) {
+      finish();
       return;
     }
-    setIndex((value) => value + 1);
+    indexRef.current += 1;
+    setIndex(indexRef.current);
     setInput("");
     setRevealed(false);
     setCorrect(null);
+  }
+
+  function requestExit() {
+    if (resultsRef.current.length > 0) {
+      finish();
+      return;
+    }
+    onExit();
   }
 
   nextRef.current = next;
@@ -516,28 +538,29 @@ export function Session({
   }
 
   if (done) {
-    const scored = results;
-    const right = scored.filter((item) => item.correct).length;
-    const missed = scored.filter((item) => !item.correct);
+    const scored = resultsRef.current.length > 0 ? resultsRef.current : results;
+    const { right, total: graded, missed } = scoreSummary(scored);
     return (
       <div className="stack">
         <header className="hero compact">
           <p className="eyebrow">{mode === "quiz" ? "Quiz complete" : "Study complete"}</p>
-          <h1>{mode === "quiz" ? `${right} / ${scored.length}` : "Round finished"}</h1>
+          <h1>{mode === "quiz" ? `${right} / ${graded}` : "Round finished"}</h1>
           <p className="lede">
             {mode === "quiz"
-              ? right === scored.length
+              ? right === graded
                 ? "Every lemma matched. Nice work."
                 : "Review the misses, then run another round."
-              : "You walked through the cards. Start another set whenever you like."}
+              : missed.length > 0
+                ? "Review the cards you missed, then start another set whenever you like."
+                : "You walked through the cards. Start another set whenever you like."}
           </p>
         </header>
         {missed.length > 0 && (
           <section className="panel">
-            <h2>Missed</h2>
+            <h2>Missed ({missed.length})</h2>
             <ul className="misses">
-              {missed.map((item) => (
-                <li key={item.word.id}>
+              {missed.map((item, missIndex) => (
+                <li key={`${item.word.id}-${missIndex}`}>
                   <strong>{formText(item.word, to)}</strong>
                   <span>{formText(item.word, from)}</span>
                   {item.given ? <em>you: {item.given}</em> : <em>skipped</em>}
@@ -558,7 +581,7 @@ export function Session({
   return (
     <div className="stack session">
       <div className="topbar">
-        <button type="button" className="ghost" onClick={onExit}>
+        <button type="button" className="ghost" onClick={requestExit}>
           Exit
         </button>
         <p className="progress-label">
