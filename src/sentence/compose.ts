@@ -950,19 +950,39 @@ export function composeOne(
   return null;
 }
 
-/** Exhaustive simple clauses (vi / vt / adj) with deterministic morphology. */
+export type EnumerateBasicOpts = {
+  /** Stop once this many clauses are built. Omit for exhaustive (tests / tiny decks). */
+  max?: number;
+  /** Shuffle slot order when capping so large decks stay diverse. */
+  rng?: () => number;
+};
+
+function maybeShuffle<T>(items: readonly T[], rng?: () => number): T[] {
+  const copy = [...items];
+  if (rng) shuffleInPlace(copy, rng);
+  return copy;
+}
+
+/** Simple clauses (vi / vt / adj) with deterministic morphology. */
 export function enumerateBasicClauses(
   index: VocabIndex,
   promptLang: LangCode,
   answerLang: LangCode,
   difficulty: number,
+  opts: EnumerateBasicOpts = {},
 ): PracticeSentence[] {
   const out: PracticeSentence[] = [];
-  const { nouns, verbs, adjectives } = index;
+  const limit = opts.max;
+  const full = () => limit != null && out.length >= limit;
+  const nouns = maybeShuffle(index.nouns, limit != null ? opts.rng : undefined);
+  const verbs = maybeShuffle(index.verbs, limit != null ? opts.rng : undefined);
+  const adjectives = maybeShuffle(index.adjectives, limit != null ? opts.rng : undefined);
 
   for (const verb of verbs) {
+    if (full()) break;
     const valence = verb.valence ?? "vi";
     for (const subject of nouns) {
+      if (full()) break;
       if (!overlaps(subject.sem, verb.subject)) continue;
       if (valence === "vi" || !verb.object) {
         const bits = clauseFromParts(subject, { verb });
@@ -992,6 +1012,7 @@ export function enumerateBasicClauses(
       }
 
       for (const object of nouns) {
+        if (full()) break;
         if (object.id === subject.id) continue;
         if (verb.object && !overlaps(object.sem, verb.object)) continue;
         const bits = clauseFromParts(subject, { verb, object });
@@ -1022,7 +1043,9 @@ export function enumerateBasicClauses(
   }
 
   for (const subject of nouns) {
+    if (full()) break;
     for (const adj of adjectives) {
+      if (full()) break;
       const bits = clauseFromParts(subject, { adj });
       const prompt = renderClause(promptLang, "prompt", bits);
       const answer = renderClause(answerLang, "answer", bits);
@@ -1064,19 +1087,14 @@ export function composePool(
   const avoid = opts.avoidStructures ?? new Set<string>();
   const byId = new Map<string, PracticeSentence>();
 
-  const basics = enumerateBasicClauses(index, promptLang, answerLang, level);
-  // Keep simple clauses for unlock / golden coverage, but when VT fan-out is huge
-  // cap them so compositional structures still fit in the pool.
+  // Cap while enumerating — VT fan-out is O(nouns²×verbs) and can hit tens of
+  // millions once the learner knows a few hundred words (language-swap jank).
   const basicBudget = Math.max(32, Math.floor(max * 0.45));
-  const basicKeep =
-    basics.length <= basicBudget
-      ? basics
-      : (() => {
-          const copy = [...basics];
-          shuffleInPlace(copy, rng);
-          return copy.slice(0, basicBudget);
-        })();
-  for (const sentence of basicKeep) {
+  const basics = enumerateBasicClauses(index, promptLang, answerLang, level, {
+    max: basicBudget,
+    rng,
+  });
+  for (const sentence of basics) {
     byId.set(sentence.id, sentence);
   }
 

@@ -302,3 +302,17 @@ describe("manual known custom word", () => {
     expect(basic.some((s) => s.wordIds.includes("custom-cat"))).toBe(true);
   });
 });
+
+describe("enumerateBasicClauses cap", () => {
+  it("stops at max so large known decks cannot explode VT fan-out", () => {
+    const deck = studyDeck();
+    const stats = allKnown(deck.map((e) => e.id));
+    const index = buildVocabIndex(deck, grammar, "en", "pl", stats, stats);
+    const capped = enumerateBasicClauses(index, "en", "pl", 0, { max: 5, rng: mulberry(3) });
+    expect(capped.length).toBeLessThanOrEqual(5);
+    expect(capped.length).toBeGreaterThan(0);
+    const pool = composePool(index, "en", "pl", { knownCount: 20, avgAccuracy: 0.9 }, { max: 40, rng: mulberry(3) });
+    expect(pool.length).toBeGreaterThan(0);
+    expect(pool.length).toBeLessThanOrEqual(40);
+  });
+});
