@@ -153,6 +153,19 @@ describe("keyTargetKind", () => {
 });
 
 describe("Session advance shortcut", () => {
+  function confirmRetype(container: HTMLElement, answer: string) {
+    releaseKey("Enter");
+    releaseKey(" ");
+    const input = answerInput(container);
+    expect(input.disabled).toBe(false);
+    expect(container.querySelector(".retype-hint")).toBeTruthy();
+    setValue(input, answer);
+    pressKey("Enter", { target: input });
+    releaseKey("Enter");
+    expect(container.querySelector(".advance-hint")?.textContent).toBe("Press Enter or Space");
+    expect(answerInput(container).disabled).toBe(true);
+  }
+
   it("types Space and submits with Enter until the answer is shown", () => {
     const { container } = session("quiz");
     const input = answerInput(container);
@@ -188,12 +201,12 @@ describe("Session advance shortcut", () => {
     expect(container.textContent).not.toContain("Press Enter or Space");
   });
 
-  it("moves one card on Space after the answer is shown and ignores the repeating Space", () => {
-    const { container } = session("study");
-    act(() => {
-      buttonNamed(container, "Reveal").click();
-    });
-    expect(container.querySelector(".open-text")?.textContent).toBe("Answer");
+  it("moves one card on Space after a correct answer and ignores the repeating Space", () => {
+    const { container } = session("quiz", words.slice(0, 2));
+    setValue(answerInput(container), "kot");
+    pressKey("Enter", { target: answerInput(container) });
+    releaseKey("Enter");
+    expect(container.querySelector(".ok-text")?.textContent).toBe("Correct");
     expect(answerInput(container).disabled).toBe(true);
 
     pressKey(" ");
@@ -216,20 +229,28 @@ describe("Session advance shortcut", () => {
   });
 
   it.each([
-    ["study", "Reveal"],
-    ["quiz", "Skip"],
-  ] as const)("advances from %s mode after the answer is shown", (mode, reveal) => {
+    ["study", "Reveal", "kot"],
+    ["quiz", "Skip", "kot"],
+  ] as const)("requires a matching retype in %s before advance shortcuts work", (mode, reveal, answer) => {
     const { container } = session(mode);
     act(() => {
       buttonNamed(container, reveal).click();
     });
-    expect(container.querySelector(".advance-hint")?.textContent).toBe("Press Enter or Space");
+    expect(container.querySelector(".retype-hint")).toBeTruthy();
+    expect(container.querySelector(".advance-hint")).toBeNull();
     pressKey(" ");
+    expect(prompt(container)).toBe("cat");
+    releaseKey(" ");
+    confirmRetype(container, answer);
+    pressKey(" ");
+    releaseKey(" ");
     expect(prompt(container)).toBe("dog");
     act(() => {
       buttonNamed(container, reveal).click();
     });
+    confirmRetype(container, "pies");
     pressKey("Enter");
+    releaseKey("Enter");
     expect(prompt(container)).toBe("bird");
   });
 
@@ -271,6 +292,7 @@ describe("Session advance shortcut", () => {
     const nextKey = pressKey("Enter", { target: next });
     expect(nextKey.defaultPrevented).toBe(false);
     expect(prompt(container)).toBe("cat");
+    releaseKey("Enter", next);
     act(() => {
       if (!nextKey.defaultPrevented) next.click();
     });
@@ -279,6 +301,7 @@ describe("Session advance shortcut", () => {
     act(() => {
       buttonNamed(container, "Skip").click();
     });
+    confirmRetype(container, "pies");
     const finish = buttonNamed(container, "Next");
     finish.focus();
     const spaceOnButton = pressKey(" ", { target: finish });
@@ -296,6 +319,7 @@ describe("Session advance shortcut", () => {
     act(() => {
       buttonNamed(container, "Reveal").click();
     });
+    confirmRetype(container, "kot");
     expect(buttonNamed(container, "Finish").parentElement?.textContent).toContain("Press Enter or Space");
     const modified = pressKey("Enter", { ctrlKey: true });
     expect(modified.defaultPrevented).toBe(false);
@@ -306,7 +330,7 @@ describe("Session advance shortcut", () => {
     expect(container.textContent).toContain("Study complete");
   });
 
-  it("does not let a Space held from typing skip a revealed answer", () => {
+  it("does not let Space skip a miss before the retype is confirmed", () => {
     const { container } = session("study");
     const input = answerInput(container);
     setValue(input, "kot");
@@ -316,27 +340,82 @@ describe("Session advance shortcut", () => {
       buttonNamed(container, "Reveal").click();
     });
     expect(prompt(container)).toBe("cat");
+    expect(answerInput(container).disabled).toBe(false);
     pressKey(" ", { repeat: true });
     pressKey(" ");
     expect(prompt(container)).toBe("cat");
     releaseKey(" ");
     pressKey(" ");
+    expect(prompt(container)).toBe("cat");
+    releaseKey(" ");
+    confirmRetype(container, "kot");
+    pressKey(" ");
+    releaseKey(" ");
     expect(prompt(container)).toBe("dog");
   });
 
-  it("counts a typed quiz answer and still advances only after the result", () => {
-    const { container } = session("quiz", words.slice(0, 2));
+  it("counts a wrong typed quiz answer once and advances only after a matching retype", () => {
+    const graded: { id: string; correct: boolean }[] = [];
+    const { container } = mount(
+      <Session
+        words={words.slice(0, 2)}
+        mode="quiz"
+        from="en"
+        to="pl"
+        onExit={() => undefined}
+        onGraded={(id, correct) => graded.push({ id, correct })}
+      />,
+    );
     const input = answerInput(container);
     setValue(input, "nope");
     pressKey("Enter", { target: input });
     expect(container.querySelector(".bad-text")?.textContent).toBe("Incorrect");
     expect(container.textContent).toContain("0 correct");
+    expect(graded).toEqual([{ id: "cat", correct: false }]);
     pressKey("Enter", { repeat: true });
     expect(prompt(container)).toBe("cat");
     releaseKey("Enter");
     pressKey(" ");
+    expect(prompt(container)).toBe("cat");
+    releaseKey(" ");
+    setValue(answerInput(container), "wrong");
+    pressKey("Enter", { target: answerInput(container) });
+    expect(container.querySelector(".retype-feedback")?.textContent).toContain("Not quite");
+    expect(graded).toEqual([{ id: "cat", correct: false }]);
+    confirmRetype(container, "kot");
+    pressKey(" ");
+    releaseKey(" ");
     expect(prompt(container)).toBe("dog");
     expect(container.textContent).toContain("0 correct");
+    expect(graded).toEqual([{ id: "cat", correct: false }]);
+  });
+
+  it("accepts any matching form when confirming a study reveal retype", () => {
+    const multi: Entry = {
+      id: "this",
+      pos: "pronoun",
+      ranks: { en: 1 },
+      forms: {
+        en: { text: "this", accepted: [{ text: "this" }] },
+        pl: {
+          text: "ten",
+          accepted: [
+            { text: "ten", context: "masculine" },
+            { text: "ta", context: "feminine" },
+            { text: "to", context: "neuter" },
+          ],
+        },
+      },
+    };
+    const { container } = session("study", [multi, words[1]]);
+    act(() => {
+      buttonNamed(container, "Reveal").click();
+    });
+    expect(container.textContent).toContain("masculine");
+    expect(container.textContent).toContain("feminine");
+    confirmRetype(container, "ta");
+    pressKey(" ");
+    expect(prompt(container)).toBe("dog");
   });
 
   describe("missed words summary", () => {
@@ -348,25 +427,27 @@ describe("Session advance shortcut", () => {
       }));
     }
 
-    function revealAndAdvance(container: HTMLElement, mode: Mode) {
+    function revealRetypeAndAdvance(container: HTMLElement, mode: Mode, answer: string) {
       act(() => {
         buttonNamed(container, mode === "quiz" ? "Skip" : "Reveal").click();
       });
       releaseKey("Enter");
       releaseKey(" ");
+      confirmRetype(container, answer);
       pressKey(" ");
       releaseKey(" ");
     }
 
     it("lists every study reveal as missed, including the last card via rapid Space", () => {
       const { container } = session("study");
-      revealAndAdvance(container, "study");
+      revealRetypeAndAdvance(container, "study", "kot");
       expect(prompt(container)).toBe("dog");
-      revealAndAdvance(container, "study");
+      revealRetypeAndAdvance(container, "study", "pies");
       expect(prompt(container)).toBe("bird");
       act(() => {
         buttonNamed(container, "Reveal").click();
       });
+      confirmRetype(container, "ptak");
       releaseKey(" ");
       pressKey(" ");
       expect(container.textContent).toContain("Study complete");
@@ -394,19 +475,21 @@ describe("Session advance shortcut", () => {
       setValue(answerInput(container), "nope");
       pressKey("Enter", { target: answerInput(container) });
       releaseKey("Enter");
+      confirmRetype(container, "kot");
       pressKey("Enter");
       releaseKey("Enter");
 
       act(() => {
         buttonNamed(container, "Skip").click();
       });
-      releaseKey("Enter");
+      confirmRetype(container, "pies");
       pressKey("Enter");
       releaseKey("Enter");
 
       setValue(answerInput(container), "zzz");
       pressKey("Enter", { target: answerInput(container) });
       releaseKey("Enter");
+      confirmRetype(container, "ptak");
       pressKey("Enter");
       releaseKey("Enter");
 
@@ -427,6 +510,7 @@ describe("Session advance shortcut", () => {
       setValue(answerInput(container), "nope");
       pressKey("Enter", { target: answerInput(container) });
       releaseKey("Enter");
+      confirmRetype(container, "jeden");
       pressKey(" ");
       releaseKey(" ");
       setValue(answerInput(container), "dwa");
@@ -438,11 +522,12 @@ describe("Session advance shortcut", () => {
       expect(missLabels(container)).toEqual([{ answer: "jeden", prompt: "one", given: "you: nope" }]);
     });
 
-    it("shows the summary with graded misses when exiting early", () => {
+    it("shows the summary with graded misses when exiting early during retype", () => {
       const { container } = session("study", words);
       act(() => {
         buttonNamed(container, "Reveal").click();
       });
+      expect(container.querySelector(".retype-hint")).toBeTruthy();
       act(() => {
         buttonNamed(container, "Exit").click();
       });
