@@ -98,14 +98,13 @@ function KnownButton({
   manual: boolean;
   onToggle: (manual: boolean) => void;
 }) {
-  // Practice-earned known stays locked; only a manual mark can be cleared.
-  const lockedIn = known && !manual;
+  // Practice-earned known is shown only as the Known badge; only manual marks toggle.
+  if (known && !manual) return null;
   return (
     <button
       type="button"
-      className={manual || known ? "sentence-known on" : "sentence-known"}
-      aria-pressed={manual || known}
-      disabled={lockedIn}
+      className={manual ? "sentence-known on" : "sentence-known"}
+      aria-pressed={manual}
       onClick={() => onToggle(!manual)}
     >
       {manual ? "Unmark" : "Mark known"}

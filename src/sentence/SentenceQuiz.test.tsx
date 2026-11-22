@@ -107,11 +107,10 @@ describe("SentenceQuiz lobby pair-known UI", () => {
 
     const html = container.textContent ?? "";
     expect(html).toContain("Known");
-    expect(html).toContain("Mark known");
     expect(html).not.toContain("this direction");
     expect(html).not.toContain("Mark known in");
-    expect(container.querySelectorAll("button.sentence-known")).toHaveLength(1);
-    expect(container.querySelector("button.sentence-known")?.hasAttribute("disabled")).toBe(true);
+    // Practice-known rows show status only — no redundant Mark known control.
+    expect(container.querySelectorAll("button.sentence-known")).toHaveLength(0);
   });
 
   it("offers Unmark when the pair was marked manually", async () => {
@@ -132,6 +131,31 @@ describe("SentenceQuiz lobby pair-known UI", () => {
 
     expect(container.textContent).toContain("Known");
     expect(container.querySelector("button.sentence-known")?.textContent).toBe("Unmark");
-    expect(container.querySelector("button.sentence-known")?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("offers Mark known for a Learning custom word", async () => {
+    const custom: Entry = {
+      ...entry("custom-cat", "kot", "cat"),
+      id: "custom-cat",
+      custom: true,
+      concept: "cat",
+    };
+    const { container } = mount(
+      <SentenceQuiz
+        from="en"
+        to="pl"
+        studyEntries={[custom]}
+        revision={1}
+        read={() => new Map()}
+        onToggleManual={() => undefined}
+        onExit={() => undefined}
+      />,
+    );
+
+    await flush();
+
+    // Custom words appear while Learning even with no practice history.
+    expect(container.textContent).toContain("Learning");
+    expect(container.querySelector("button.sentence-known")?.textContent).toBe("Mark known");
   });
 });
