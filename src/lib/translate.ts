@@ -232,14 +232,20 @@ async function lookupWiktionary(
  * Try rule-based lemma candidates, accepting only those verified on Wiktionary
  * (or that resolve via a form-of page that points at them).
  */
+/** Cap sequential Wiktionary probes so a long candidate list cannot stall Add a word. */
+const MAX_RULE_CANDIDATE_FETCHES = 8;
+
 async function lookupVerifiedRuleLemma(
   query: string,
   source: LangCode,
   fetchImpl: typeof fetch,
 ): Promise<WikiLookup | null> {
   const candidates = lemmaCandidates(source, query);
+  let fetches = 0;
   for (const candidate of candidates) {
     if (foldLemmaKey(candidate, source) === foldLemmaKey(query, source)) continue;
+    if (fetches >= MAX_RULE_CANDIDATE_FETCHES) break;
+    fetches += 1;
     // Exact title only — German capitalizeLookup would turn "kleine" into the
     // noun "Kleine", which is a different lemma.
     const page = await fetchWikiPageVariants(candidate, source, fetchImpl, {
@@ -368,9 +374,10 @@ export async function lookupWord(
   try {
     const surfaceForWiki = forms[source]?.accepted[0]?.text || lookupQuery;
     let wiki = await lookupWiktionary(surfaceForWiki, source, fetchImpl);
-    // When the static map and the form page did not remap, try verified rule candidates
-    // (covers missing pages / network gaps / unparsed templates).
-    if (!lemma && (!wiki || !wiki.remapped)) {
+    // Only when the surface page is missing: try verified rule candidates.
+    // If Wiktionary already returned an identity lemma page, trust it — do not
+    // overwrite with a rule guess (avoids remapping real bases like "kawa").
+    if (!lemma && !wiki) {
       const ruled = await lookupVerifiedRuleLemma(query, source, fetchImpl);
       if (ruled) wiki = ruled;
     }

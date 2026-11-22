@@ -462,4 +462,82 @@ describe("lookupWord multi-language lemma canonicalization", () => {
     expect(ja.forms.ja?.text).toBe("行く");
     expect(ja.lemma).toBeUndefined();
   });
+
+  it("does not remap a real Polish base word when rules could invent another page", async () => {
+    await loadLemmaIndex(async () => ({ version: 1, words: {} }));
+    const calls: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname.includes("mymemory")) {
+        return {
+          ok: true,
+          json: async () => ({
+            responseData: { translatedText: "coffee" },
+            matches: [{ translation: "coffee", match: 1 }],
+          }),
+        } as Response;
+      }
+      const page = url.searchParams.get("page") || "";
+      calls.push(page);
+      // Real citation lemma page for kawa. A rule candidate "kawać" also exists —
+      // accepting it would falsely remap the noun.
+      if (page === "kawa") {
+        return {
+          ok: true,
+          json: async () => ({
+            parse: {
+              title: "kawa",
+              wikitext: {
+                "*": `==Polish==\n===Noun===\n{{pl-noun|f}}\n# [[coffee]]\n\n====Translations====\n{{trans-top|coffee}}\n* English: {{t+|en|coffee}}\n{{trans-bottom}}\n`,
+              },
+            },
+          }),
+        } as Response;
+      }
+      if (page === "kawać") {
+        return {
+          ok: true,
+          json: async () => ({
+            parse: {
+              title: "kawać",
+              wikitext: {
+                "*": `==Polish==\n===Verb===\n{{pl-verb|ć}}\n# to [[peck]]\n`,
+              },
+            },
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ error: { code: "missingtitle" } }) } as Response;
+    }) as typeof fetch;
+
+    const draft = await lookupWord("kawa", "pl", [], fetchImpl, ["pl", "en"]);
+    expect(draft.forms.pl?.text).toBe("kawa");
+    expect(draft.lemma).toBeUndefined();
+    expect(draft.forms.en?.accepted[0]?.text).toBe("coffee");
+    // Identity wiki hit must not probe rule candidates.
+    expect(calls).toContain("kawa");
+    expect(calls).not.toContain("kawać");
+    expect(calls).not.toContain("kaw");
+  });
+
+  it("stays graceful when Wiktionary is offline", async () => {
+    await loadLemmaIndex(async () => ({ version: 1, words: {} }));
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("wiktionary")) throw new TypeError("Failed to fetch");
+      return {
+        ok: true,
+        json: async () => ({
+          responseData: { translatedText: "house" },
+          matches: [{ translation: "house", match: 1 }],
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const draft = await lookupWord("dom", "pl", [], fetchImpl, ["pl", "en"]);
+    expect(draft.forms.pl?.text).toBe("dom");
+    expect(draft.lemma).toBeUndefined();
+    expect(draft.notes.join(" ")).toMatch(/Wiktionary didn't respond/);
+    expect(draft.forms.en?.text).toBe("house");
+  });
 });
