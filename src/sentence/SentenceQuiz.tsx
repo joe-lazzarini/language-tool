@@ -33,12 +33,6 @@ import { buildVocabIndex } from "./vocab";
 
 type Phase = "lobby" | "round";
 
-function knownLabel(language: string, known: boolean, manual: boolean): string {
-  if (known && manual) return `${language}: marked for this direction`;
-  if (known) return `${language}: known this direction`;
-  return `Mark known in ${language}`;
-}
-
 function WordGroups({
   from,
   to,
@@ -48,7 +42,7 @@ function WordGroups({
   from: LangCode;
   to: LangCode;
   rows: SentenceWordRow[];
-  onToggle: (side: "prompt" | "answer", id: string, manual: boolean) => void;
+  onToggle: (id: string, manual: boolean) => void;
 }) {
   const groups = [
     ["noun", "Nouns"],
@@ -75,21 +69,14 @@ function WordGroups({
                     <span lang={languageByCode(from).locale}>{row.prompt}</span>
                     <span aria-hidden="true">→</span>
                     <span lang={languageByCode(to).locale}>{row.answer}</span>
+                    <span className="pos">{row.pairKnown ? "Known" : "Learning"}</span>
                     {row.eligible ? <span className="pos"> in sentences</span> : null}
-                    {!row.eligible && row.pairKnown ? <span className="pos"> known</span> : null}
                   </p>
                   <div className="tool-row">
                     <KnownButton
-                      language={languageName(from)}
-                      known={row.promptKnown}
-                      manual={row.promptManual}
-                      onToggle={(manual) => onToggle("prompt", row.id, manual)}
-                    />
-                    <KnownButton
-                      language={languageName(to)}
-                      known={row.answerKnown}
-                      manual={row.answerManual}
-                      onToggle={(manual) => onToggle("answer", row.id, manual)}
+                      known={row.pairKnown}
+                      manual={row.pairManual}
+                      onToggle={(manual) => onToggle(row.id, manual)}
                     />
                   </div>
                 </li>
@@ -103,26 +90,25 @@ function WordGroups({
 }
 
 function KnownButton({
-  language,
   known,
   manual,
   onToggle,
 }: {
-  language: string;
   known: boolean;
   manual: boolean;
   onToggle: (manual: boolean) => void;
 }) {
+  // Practice-earned known stays locked; only a manual mark can be cleared.
   const lockedIn = known && !manual;
   return (
     <button
       type="button"
-      className={known ? "sentence-known on" : "sentence-known"}
-      aria-pressed={known}
+      className={manual || known ? "sentence-known on" : "sentence-known"}
+      aria-pressed={manual || known}
       disabled={lockedIn}
       onClick={() => onToggle(!manual)}
     >
-      {knownLabel(language, known, manual)}
+      {manual ? "Unmark" : "Mark known"}
     </button>
   );
 }
@@ -219,9 +205,9 @@ export function SentenceQuiz({
     if (revealed) inputRef.current?.blur();
   }, [revealed]);
 
-  function toggle(side: "prompt" | "answer", id: string, manual: boolean) {
-    if (side === "answer") onToggleManual(from, to, id, manual);
-    else onToggleManual(to, from, id, manual);
+  function toggle(id: string, manual: boolean) {
+    // toggleManual writes the flag to both direction docs for the pair.
+    onToggleManual(from, to, id, manual);
   }
 
   function start() {

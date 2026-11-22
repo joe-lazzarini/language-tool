@@ -92,6 +92,23 @@ export function withManual(stat: WordStat | undefined, manual: boolean, now: num
   return { ...prev, manual, lastSeen: now };
 }
 
+/**
+ * Write the manual known flag to both direction maps for an unordered pair.
+ * Marking sets both docs; unmarking clears both (combinePairStat ORs manual).
+ */
+export function markPairManual(
+  forward: ReadonlyMap<string, WordStat>,
+  reverse: ReadonlyMap<string, WordStat>,
+  wordId: string,
+  manual: boolean,
+  now: number,
+): { forward: Map<string, WordStat>; reverse: Map<string, WordStat> } {
+  return {
+    forward: putStat(forward, wordId, withManual(forward.get(wordId), manual, now)),
+    reverse: putStat(reverse, wordId, withManual(reverse.get(wordId), manual, now)),
+  };
+}
+
 export function isKnown(stat: WordStat | undefined): boolean {
   if (!stat) return false;
   if (stat.manual) return true;
@@ -145,6 +162,14 @@ export function isKnownPair(
   reverse: WordStat | undefined,
 ): boolean {
   return isKnown(combinePairStat(forward, reverse));
+}
+
+/** True when either direction doc carries a manual known mark (OR via combinePairStat). */
+export function isManualPair(
+  forward: WordStat | undefined,
+  reverse: WordStat | undefined,
+): boolean {
+  return Boolean(combinePairStat(forward, reverse)?.manual);
 }
 
 export type PairKnownSummary = {

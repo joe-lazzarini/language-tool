@@ -6,12 +6,12 @@ import { readAccuracyStore, writeAccuracyStore, type AccuracyStore } from "./sto
 import {
   dirKey,
   docToStats,
+  markPairManual,
   mergeStats,
   putStat,
   recordAttempt,
   sameWords,
   statsToDoc,
-  withManual,
   type AccuracyDoc,
   type WordStat,
 } from "./stats";
@@ -130,8 +130,12 @@ export function useAccuracy(uid: string | null) {
 
   function toggleManual(from: LangCode, to: LangCode, wordId: string, manual: boolean) {
     if (!wordId || from === to) return;
-    const current = docToStats(storeRef.current[dirKey(from, to)]);
-    commit(from, to, putStat(current, wordId, withManual(current.get(wordId), manual, Date.now())));
+    const now = Date.now();
+    const forward = docToStats(storeRef.current[dirKey(from, to)]);
+    const reverse = docToStats(storeRef.current[dirKey(to, from)]);
+    const next = markPairManual(forward, reverse, wordId, manual, now);
+    commit(from, to, next.forward);
+    commit(to, from, next.reverse);
   }
 
   return { read, record, toggleManual, revision, error };

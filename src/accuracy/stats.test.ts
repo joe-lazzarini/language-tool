@@ -8,8 +8,10 @@ import {
   fromTuple,
   isKnown,
   isKnownPair,
+  isManualPair,
   isWeak,
   knownIdSet,
+  markPairManual,
   mergeStat,
   parseDirKey,
   putStat,
@@ -105,6 +107,8 @@ describe("combinePairStat / isKnownPair / summarizePairKnown", () => {
   it("ORs manual marks and keeps pairs independent via separate direction maps", () => {
     expect(isKnownPair(withManual(undefined, true, 1)!, undefined)).toBe(true);
     expect(isKnownPair(solid(), solid(10))).toBe(true);
+    expect(isManualPair(withManual(undefined, true, 1)!, undefined)).toBe(true);
+    expect(isManualPair(solid(), undefined)).toBe(false);
 
     const enPlForward = new Map<string, WordStat>([["cat", solid()]]);
     const enPlReverse = new Map<string, WordStat>();
@@ -116,6 +120,39 @@ describe("combinePairStat / isKnownPair / summarizePairKnown", () => {
 
     expect(summarizePairKnown(["cat", "dog"], enPlForward, enPlReverse)).toEqual({ known: 1 });
     expect(summarizePairKnown(["cat", "dog"], enDeForward, enDeReverse)).toEqual({ known: 0 });
+  });
+
+  it("marks and unmarks manual known on both direction docs", () => {
+    const empty = new Map<string, WordStat>();
+    const marked = markPairManual(empty, empty, "cat", true, 10);
+    expect(marked.forward.get("cat")?.manual).toBe(true);
+    expect(marked.reverse.get("cat")?.manual).toBe(true);
+    expect(isKnownPair(marked.forward.get("cat"), marked.reverse.get("cat"))).toBe(true);
+    expect(isManualPair(marked.forward.get("cat"), marked.reverse.get("cat"))).toBe(true);
+
+    // One-sided leftover manual still counts as pair-manual via OR until both clear.
+    const oneSide = new Map<string, WordStat>([["cat", withManual(undefined, true, 1)!]]);
+    expect(isManualPair(oneSide.get("cat"), undefined)).toBe(true);
+
+    const cleared = markPairManual(oneSide, empty, "cat", false, 20);
+    expect(cleared.forward.get("cat")).toBeUndefined();
+    expect(cleared.reverse.get("cat")).toBeUndefined();
+    expect(isManualPair(cleared.forward.get("cat"), cleared.reverse.get("cat"))).toBe(false);
+    expect(isKnownPair(cleared.forward.get("cat"), cleared.reverse.get("cat"))).toBe(false);
+
+    // Unmark keeps attempt history but clears the flag on both sides.
+    const practiced = markPairManual(
+      new Map([["dog", once(1)]]),
+      new Map([["dog", once(2)]]),
+      "dog",
+      true,
+      30,
+    );
+    const unmarked = markPairManual(practiced.forward, practiced.reverse, "dog", false, 40);
+    expect(unmarked.forward.get("dog")?.manual).toBe(false);
+    expect(unmarked.reverse.get("dog")?.manual).toBe(false);
+    expect(unmarked.forward.get("dog")?.attempts).toBe(1);
+    expect(unmarked.reverse.get("dog")?.attempts).toBe(1);
   });
 
   it("counts combined known words from existing per-direction docs", () => {

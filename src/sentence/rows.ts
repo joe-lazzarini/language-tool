@@ -1,4 +1,4 @@
-import { isKnown, isKnownPair, type WordStat } from "../accuracy/stats";
+import { isKnownPair, isManualPair, type WordStat } from "../accuracy/stats";
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import { slotLabel } from "./generate";
@@ -10,24 +10,12 @@ export type SentenceWordRow = {
   pos: "noun" | "verb" | "adjective";
   prompt: string;
   answer: string;
-  /** Known in the prompt←answer direction only (storage stays per-direction). */
-  promptKnown: boolean;
-  /** Known in the answer←prompt (selected) direction only. */
-  answerKnown: boolean;
-  promptManual: boolean;
-  answerManual: boolean;
-  /** True when the combined unordered-pair score meets known (independent of weak). */
+  /** Known for the unordered language pair (combined A↔B score). */
   pairKnown: boolean;
+  /** Manual mark on either direction (OR via combinePairStat). */
+  pairManual: boolean;
   eligible: boolean;
 };
-
-function sideState(stats: ReadonlyMap<string, WordStat>, id: string): { known: boolean; manual: boolean } {
-  const stat = stats.get(id);
-  return {
-    known: isKnown(stat),
-    manual: Boolean(stat?.manual && isKnown(stat)),
-  };
-}
 
 /** Pretend the card is known so we can reuse surface resolution for lobby labels. */
 function displaySlot(
@@ -60,11 +48,11 @@ export function sentenceRows(
   const rows: SentenceWordRow[] = [];
 
   for (const entry of candidates) {
-    const prompt = sideState(promptStats, entry.id);
-    const answer = sideState(answerStats, entry.id);
-    const pairKnown = isKnownPair(answerStats.get(entry.id), promptStats.get(entry.id));
+    const forward = answerStats.get(entry.id);
+    const reverse = promptStats.get(entry.id);
+    const pairKnown = isKnownPair(forward, reverse);
     // Lobby lists words you have practiced or added — not the entire deck.
-    if (!entry.custom && !pairKnown && !prompt.known && !answer.known) continue;
+    if (!entry.custom && !pairKnown) continue;
     const display = displaySlot(entry, grammar, promptLang, answerLang);
     if (!display) continue;
     rows.push({
@@ -72,12 +60,9 @@ export function sentenceRows(
       pos: display.pos,
       prompt: slotLabel(display, "prompt"),
       answer: slotLabel(display, "answer"),
-      promptKnown: prompt.known,
-      answerKnown: answer.known,
-      promptManual: prompt.manual,
-      answerManual: answer.manual,
       pairKnown,
-      eligible: isEligiblePair(promptStats.get(entry.id), answerStats.get(entry.id)),
+      pairManual: isManualPair(forward, reverse),
+      eligible: isEligiblePair(reverse, forward),
     });
   }
 
