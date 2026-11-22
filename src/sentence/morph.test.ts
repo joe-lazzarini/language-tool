@@ -28,6 +28,8 @@ describe("morphology helpers", () => {
     expect(plPast("spać", "n")).toBe("spało");
     expect(plPast("widzieć", "m")).toBe("widział");
     expect(plFuture("spać")).toBe("będzie spać");
+    expect(plFuture("powiedzieć")).toBe("powie");
+    expect(dePerfect("erreichen", "erreicht")).toBe("hat erreicht");
     expect(plLocative("dom", "m")).toBe("domu");
     expect(plGenitive("dom", "m")).toBe("domu");
     expect(plGenitive("książka", "f")).toBe("książki");

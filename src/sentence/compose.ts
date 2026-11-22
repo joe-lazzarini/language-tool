@@ -3,6 +3,7 @@ import { closedClass, pickAdverb } from "./closedClass";
 import { finiteVerb } from "./morph";
 import { renderNp, renderPredAdj } from "./np";
 import type {
+  AdjDomain,
   GeneratorProgress,
   Gender,
   GramNumber,
@@ -12,6 +13,7 @@ import type {
   Tense,
   VocabIndex,
 } from "./types";
+import { domainsFromSem } from "./vocab";
 
 const MIN_BASIC_FALLBACK = 4;
 
@@ -124,6 +126,31 @@ function overlaps(tags: readonly string[], allowed: readonly string[] | undefine
 
 function isAnimate(sem: readonly Sem[]): boolean {
   return sem.includes("person") || sem.includes("animal");
+}
+
+function nounDomains(noun: SlotWord): readonly AdjDomain[] {
+  if (noun.domains && noun.domains.length > 0) return noun.domains;
+  return domainsFromSem(noun.sem);
+}
+
+/** True when an adjective may modify / predicate on this noun. */
+export function adjFitsNoun(adj: SlotWord, noun: SlotWord): boolean {
+  const adjDom = adj.domains && adj.domains.length > 0 ? adj.domains : (["open"] as AdjDomain[]);
+  if (adjDom.includes("open")) return true;
+  const accepted = nounDomains(noun);
+  return adjDom.some((d) => accepted.includes(d));
+}
+
+function defaultVtObject(): Sem[] {
+  return ["thing", "person", "animal", "food", "drink", "readable", "place"];
+}
+
+/** Copula is rendered via adj frames; bare "be" as a content VI yields "The X is." */
+function isLexicalCopula(verb: SlotWord): boolean {
+  const concept = (verb.concept ?? "").toLowerCase();
+  if (concept === "be") return true;
+  const lemma = (verb.prompt.lemma || verb.answer.lemma || "").toLowerCase().replace(/^to\s+/, "");
+  return lemma === "be" || lemma === "być" || lemma === "sein";
 }
 
 function pick<T>(items: readonly T[], rng: () => number): T | null {
@@ -367,11 +394,50 @@ function assembleEnglish(parts: {
   }
 
   if (parts.question || parts.negated) {
+    // Copula uses be-support, not do-support ("is not" / "is the cat …?", not "does not i").
+    const lowerVerb = parts.verb.toLowerCase();
+    if (parts.tense === "present" && (lowerVerb === "is" || lowerVerb === "are" || lowerVerb === "am")) {
+      if (parts.question) {
+        return `${parts.verb} ${parts.subject} ${parts.negated ? "not " : ""}${tail}`.replace(/\s+/g, " ").trim();
+      }
+      return `${parts.subject} ${parts.verb} not${tail ? ` ${tail}` : ""}`.trim();
+    }
+    // Modals take "must not" / "can not", never do-support (*does not must).
+    const modal = /^(must|can|may|might|should|would|could|shall|will|ought)(\s|$)/i.exec(parts.verb);
+    if (parts.tense === "present" && modal) {
+      const m = modal[1]!.toLowerCase();
+      if (parts.question) {
+        return `${m} ${parts.subject} ${parts.negated ? "not " : ""}${parts.verb.slice(modal[0].length)}${tail ? ` ${tail}` : ""}`
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+      return `${parts.subject} ${m} not${parts.verb.slice(modal[0].length) ? ` ${parts.verb.slice(modal[0].length)}` : ""}${tail ? ` ${tail}` : ""}`
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    if (parts.tense === "present" && /^is able to\b/i.test(parts.verb)) {
+      const rest = parts.verb.replace(/^is able to\s*/i, "");
+      if (parts.question) {
+        return `is ${parts.subject} ${parts.negated ? "not " : ""}able to${rest ? ` ${rest}` : ""}${tail ? ` ${tail}` : ""}`
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+      return `${parts.subject} is not able to${rest ? ` ${rest}` : ""}${tail ? ` ${tail}` : ""}`.replace(/\s+/g, " ").trim();
+    }
     const aux = parts.tense === "past" ? "did" : "does";
     // Recover base from 3sg/past is hard; for present use strip -s heuristic on verb when present.
     let base = parts.verb;
     if (parts.tense === "present") {
-      if (base.endsWith("ies")) base = `${base.slice(0, -3)}y`;
+      const irregularBase: Record<string, string> = {
+        is: "be",
+        has: "have",
+        does: "do",
+        goes: "go",
+        says: "say",
+      };
+      if (irregularBase[lowerVerb]) base = irregularBase[lowerVerb]!;
+      else if (base.endsWith("ies")) base = `${base.slice(0, -3)}y`;
+      else if (base.endsWith("oes") && base.length > 3) base = base.slice(0, -2); // goes → go, does → do (backup)
       else if (base.endsWith("es") && /(s|x|z|ch|sh)es$/i.test(base)) base = base.slice(0, -2);
       else if (base.endsWith("s")) base = base.slice(0, -1);
     }
@@ -695,13 +761,19 @@ export function composeOne(
   };
 
   function buildVi(kind: StructureKind): PracticeSentence | null {
-    const viVerbs = verbs.filter((v) => (v.valence ?? "vi") === "vi" || !v.object);
-    const verb = pick(viVerbs.length ? viVerbs : verbs, rng);
+    const viVerbs = verbs.filter(
+      (v) => ((v.valence ?? "vi") === "vi" || !v.object) && !isLexicalCopula(v),
+    );
+    // No fallback to transitive / unrestricted verbs — skip the structure.
+    const verb = pick(viVerbs, rng);
     if (!verb) return null;
     const subjects = nouns.filter((n) => overlaps(n.sem, verb.subject));
-    const subject = pick(subjects.length ? subjects : nouns, rng);
+    const subject = pick(subjects, rng);
     if (!subject) return null;
-    const attr = kind.startsWith("attr") ? pick(adjectives, rng) ?? undefined : undefined;
+    const attrPool = kind.startsWith("attr")
+      ? adjectives.filter((a) => adjFitsNoun(a, subject))
+      : [];
+    const attr = kind.startsWith("attr") ? pick(attrPool, rng) ?? undefined : undefined;
     if (kind.startsWith("attr") && !attr) return null;
     const tense: Tense = kind === "past-vi" ? "past" : kind === "future-vi" ? "future" : "present";
     const bits = clauseFromParts(subject, {
@@ -754,15 +826,20 @@ export function composeOne(
 
   function buildVt(kind: StructureKind): PracticeSentence | null {
     const vtVerbs = verbs.filter((v) => v.valence === "vt" || Boolean(v.object));
-    const verb = pick(vtVerbs.length ? vtVerbs : verbs.filter((v) => v.valence !== "vi"), rng) ?? pick(verbs, rng);
+    // No fallback to intransitives as if they were transitive.
+    const verb = pick(vtVerbs, rng);
     if (!verb) return null;
     const subjects = nouns.filter((n) => overlaps(n.sem, verb.subject));
-    const subject = pick(subjects.length ? subjects : nouns, rng);
+    const subject = pick(subjects, rng);
     if (!subject) return null;
-    const objects = nouns.filter((n) => n.id !== subject.id && overlaps(n.sem, verb.object ?? ["thing", "person", "animal", "food", "drink", "readable", "place"]));
-    const object = pick(objects.length ? objects : nouns.filter((n) => n.id !== subject.id), rng);
+    const objectAllowed = verb.object ?? defaultVtObject();
+    const objects = nouns.filter((n) => n.id !== subject.id && overlaps(n.sem, objectAllowed));
+    const object = pick(objects, rng);
     if (!object) return null;
-    const attr = kind.startsWith("attr") ? pick(adjectives, rng) ?? undefined : undefined;
+    const attrPool = kind.startsWith("attr")
+      ? adjectives.filter((a) => adjFitsNoun(a, subject))
+      : [];
+    const attr = kind.startsWith("attr") ? pick(attrPool, rng) ?? undefined : undefined;
     if (kind.startsWith("attr") && !attr) return null;
     const tense: Tense = kind === "past-vt" ? "past" : "present";
 
@@ -817,8 +894,12 @@ export function composeOne(
 
   function buildAdj(): PracticeSentence | null {
     const subject = pick(nouns, rng);
-    const adj = pick(adjectives, rng);
-    if (!subject || !adj) return null;
+    if (!subject) return null;
+    const adj = pick(
+      adjectives.filter((a) => adjFitsNoun(a, subject)),
+      rng,
+    );
+    if (!adj) return null;
     const bits = clauseFromParts(subject, { adj, tense: "present" });
     const prompt = renderClause(promptLang, "prompt", bits);
     const answer = renderClause(answerLang, "answer", bits);
@@ -843,13 +924,15 @@ export function composeOne(
 
   function pickSubjectFor(verb: SlotWord): SlotWord | null {
     const matched = nouns.filter((n) => overlaps(n.sem, verb.subject));
-    return pick(matched.length ? matched : [], rng);
+    return pick(matched, rng);
   }
 
   function buildCoord(conj: "and" | "but"): PracticeSentence | null {
-    const viVerbs = verbs.filter((v) => (v.valence ?? "vi") === "vi" || !v.object);
-    const verbL = pick(viVerbs.length ? viVerbs : verbs, rng);
-    const verbR = pick(viVerbs.length ? viVerbs : verbs, rng);
+    const viVerbs = verbs.filter(
+      (v) => ((v.valence ?? "vi") === "vi" || !v.object) && !isLexicalCopula(v),
+    );
+    const verbL = pick(viVerbs, rng);
+    const verbR = pick(viVerbs, rng);
     if (!verbL || !verbR) return null;
     const subjL = pickSubjectFor(verbL);
     const subjR = pickSubjectFor(verbR);
@@ -876,9 +959,11 @@ export function composeOne(
   }
 
   function buildSubord(marker: "because" | "when" | "if"): PracticeSentence | null {
-    const viVerbs = verbs.filter((v) => (v.valence ?? "vi") === "vi" || !v.object);
-    const verbM = pick(viVerbs.length ? viVerbs : verbs, rng);
-    const verbD = pick(viVerbs.length ? viVerbs : verbs, rng);
+    const viVerbs = verbs.filter(
+      (v) => ((v.valence ?? "vi") === "vi" || !v.object) && !isLexicalCopula(v),
+    );
+    const verbM = pick(viVerbs, rng);
+    const verbD = pick(viVerbs, rng);
     if (!verbM || !verbD) return null;
     const subjectM = pickSubjectFor(verbM);
     const subjectD = pickSubjectFor(verbD);
@@ -910,15 +995,20 @@ export function composeOne(
       nouns.filter((n) => isAnimate(n.sem)),
       rng,
     );
-    const viVerbs = verbs.filter((v) => (v.valence ?? "vi") === "vi" || !v.object);
-    const relVerb = pick(viVerbs, rng);
+    const viVerbs = verbs.filter(
+      (v) => ((v.valence ?? "vi") === "vi" || !v.object) && !isLexicalCopula(v),
+    );
+    const relVerb = pick(
+      viVerbs.filter((v) => headNoun && overlaps(headNoun.sem, v.subject)),
+      rng,
+    );
     const mainVerb = pick(
       verbs.filter((v) => v.valence === "vt" || Boolean(v.object)),
       rng,
     );
     if (!headNoun || !relVerb || !mainVerb) return null;
     const objectCandidates = nouns.filter(
-      (n) => n.id !== headNoun.id && overlaps(n.sem, mainVerb.object ?? ["thing", "person", "animal", "food", "drink", "readable", "place"]),
+      (n) => n.id !== headNoun.id && overlaps(n.sem, mainVerb.object ?? defaultVtObject()),
     );
     const object = pick(objectCandidates, rng);
     if (!object) return null;
@@ -981,6 +1071,7 @@ export function enumerateBasicClauses(
   for (const verb of verbs) {
     if (full()) break;
     const valence = verb.valence ?? "vi";
+    if (isLexicalCopula(verb) && (valence === "vi" || !verb.object)) continue;
     for (const subject of nouns) {
       if (full()) break;
       if (!overlaps(subject.sem, verb.subject)) continue;
@@ -1046,6 +1137,7 @@ export function enumerateBasicClauses(
     if (full()) break;
     for (const adj of adjectives) {
       if (full()) break;
+      if (!adjFitsNoun(adj, subject)) continue;
       const bits = clauseFromParts(subject, { adj });
       const prompt = renderClause(promptLang, "prompt", bits);
       const answer = renderClause(answerLang, "answer", bits);

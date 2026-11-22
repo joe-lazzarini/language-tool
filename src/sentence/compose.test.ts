@@ -1,9 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { recordAttempt, withManual, type WordStat } from "../accuracy/stats";
 import { LANG_CODES, type LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import {
+  adjFitsNoun,
   composeOne,
   composePool,
   difficultyLevel,
@@ -11,8 +13,9 @@ import {
   structuresForLevel,
 } from "./compose";
 import { gradeSentence, isCorrectSentence } from "./check";
-import { buildVocabIndex } from "./vocab";
-import type { GrammarFile, SentencePack } from "./types";
+import { buildVocabIndex, DEFAULT_NOUN_SEM, defaultGrammarTagsForNewWord } from "./vocab";
+import type { GrammarFile, SentencePack, SlotWord } from "./types";
+import { MIN_READY_SENTENCES } from "./generate";
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;
@@ -314,5 +317,178 @@ describe("enumerateBasicClauses cap", () => {
     const pool = composePool(index, "en", "pl", { knownCount: 20, avgAccuracy: 0.9 }, { max: 40, rng: mulberry(3) });
     expect(pool.length).toBeGreaterThan(0);
     expect(pool.length).toBeLessThanOrEqual(40);
+  });
+});
+
+describe("semantic restrictions", () => {
+  it("rejects adjective–noun mismatches like tall year / tasty house", () => {
+    const year: SlotWord = {
+      id: "year",
+      pos: "noun",
+      concept: "year",
+      sem: ["thing"],
+      domains: ["evaluative", "temporal"],
+      prompt: { lemma: "year", gender: "n" },
+      answer: { lemma: "rok", gender: "m" },
+    };
+    const house: SlotWord = {
+      id: "house",
+      pos: "noun",
+      concept: "house",
+      sem: ["place", "thing"],
+      domains: ["physical", "evaluative", "nationality"],
+      prompt: { lemma: "house", gender: "n" },
+      answer: { lemma: "dom", gender: "m" },
+    };
+    const tall: SlotWord = {
+      id: "tall",
+      pos: "adjective",
+      concept: "tall",
+      sem: [],
+      domains: ["human", "physical"],
+      prompt: { lemma: "tall" },
+      answer: { lemma: "wysoki", m: "wysoki", f: "wysoka", n: "wysokie" },
+    };
+    const tasty: SlotWord = {
+      id: "tasty",
+      pos: "adjective",
+      concept: "tasty",
+      sem: [],
+      domains: ["taste"],
+      prompt: { lemma: "tasty" },
+      answer: { lemma: "smaczny", m: "smaczny", f: "smaczna", n: "smaczne" },
+    };
+    const big: SlotWord = {
+      id: "big",
+      pos: "adjective",
+      concept: "big",
+      sem: [],
+      domains: ["physical", "open"],
+      prompt: { lemma: "big" },
+      answer: { lemma: "duży", m: "duży", f: "duża", n: "duże" },
+    };
+    expect(adjFitsNoun(tall, year)).toBe(false);
+    expect(adjFitsNoun(tasty, house)).toBe(false);
+    expect(adjFitsNoun(big, house)).toBe(true);
+    expect(adjFitsNoun(tall, house)).toBe(true);
+  });
+
+  it("skips vt/vi when no legal filler exists instead of violating restrictions", () => {
+    // Only intransitive sleep + only place nouns → vt must fail closed.
+    const tiny: Entry[] = [
+      entry("pl-103", "noun", { en: form("house"), pl: form("dom") }, "house"),
+      entry("pl-144", "noun", { en: form("city"), pl: form("miasto") }, "city"),
+      entry("pl-798", "verb", { en: form("to sleep"), pl: form("spać") }, "sleep"),
+    ];
+    const stats = allKnown(tiny.map((e) => e.id));
+    const index = buildVocabIndex(tiny, grammar, "en", "pl", stats, stats);
+    expect(index.verbs.every((v) => v.valence === "vi")).toBe(true);
+    for (let seed = 1; seed <= 40; seed += 1) {
+      expect(composeOne(index, "en", "pl", "vt", mulberry(seed), 0)).toBeNull();
+      expect(composeOne(index, "en", "pl", "neg-vt", mulberry(seed), 3)).toBeNull();
+    }
+    // vi with place-only subjects + sleep (person|animal) also fails.
+    for (let seed = 1; seed <= 20; seed += 1) {
+      expect(composeOne(index, "en", "pl", "vi", mulberry(seed), 0)).toBeNull();
+    }
+  });
+
+  it("keeps unlisted nouns on conservative thing-only defaults", () => {
+    const custom = entry("custom-gadget", "noun", { en: form("gadget"), pl: form("gadżet") });
+    const stats = allKnown(["custom-gadget"]);
+    const index = buildVocabIndex([custom], grammar, "en", "pl", stats, stats);
+    const slot = index.byId.get("custom-gadget");
+    expect(slot?.sem).toEqual(DEFAULT_NOUN_SEM);
+    expect(defaultGrammarTagsForNewWord("noun").sem).toEqual(["thing"]);
+    expect(defaultGrammarTagsForNewWord("noun", { placeName: true }).sem).toEqual(["place", "thing"]);
+  });
+});
+
+describe("realistic First 100/250 pools", () => {
+  const catalogPath = resolve("public/data/catalog.json");
+  const enPath = resolve("public/data/langs/en.json");
+  const plPath = resolve("public/data/langs/pl.json");
+  const hasDeck = existsSync(catalogPath) && existsSync(enPath) && existsSync(plPath);
+
+  function loadBand(maxRank: number): Entry[] {
+    const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as {
+      entries: Array<{ id: string; pos: string; ranks?: { pl?: number }; concept?: string }>;
+    };
+    const en = JSON.parse(readFileSync(enPath, "utf8")) as Record<string, ReturnType<typeof form>>;
+    const pl = JSON.parse(readFileSync(plPath, "utf8")) as Record<string, ReturnType<typeof form>>;
+    const out: Entry[] = [];
+    for (const item of catalog.entries) {
+      const pos = item.pos.toLowerCase();
+      if (!["noun", "verb", "adjective", "proper noun"].includes(pos)) continue;
+      const rank = item.ranks?.pl;
+      if (rank == null || rank > maxRank) continue;
+      if (!en[item.id] || !pl[item.id]) continue;
+      out.push({
+        id: item.id,
+        pos: item.pos,
+        ranks: item.ranks ?? {},
+        forms: { en: en[item.id]!, pl: pl[item.id]! },
+        concept: item.concept,
+      });
+    }
+    return out;
+  }
+
+  function sentenceViolates(sentence: { wordIds: string[]; structure: string; prompt: string }, index: ReturnType<typeof buildVocabIndex>): string | null {
+    const subject = index.byId.get(sentence.wordIds[0]!);
+    const verb = sentence.wordIds.map((id) => index.byId.get(id)).find((w) => w?.pos === "verb");
+    const adj = sentence.wordIds.map((id) => index.byId.get(id)).find((w) => w?.pos === "adjective");
+    if (verb && subject) {
+      if (verb.subject?.length && !subject.sem.some((s) => verb.subject!.includes(s))) {
+        return `bad subject ${subject.concept} for ${verb.concept}`;
+      }
+      if ((verb.valence === "vt" || verb.object) && sentence.wordIds[2]) {
+        const object = index.byId.get(sentence.wordIds[2]!);
+        if (object && verb.object?.length && !object.sem.some((s) => verb.object!.includes(s))) {
+          return `bad object ${object.concept} for ${verb.concept}`;
+        }
+      }
+      // vi must not appear as a transitive frame with a filled object id from a vi verb
+      if (sentence.structure.includes("vt") && verb.valence !== "vt" && !verb.object) {
+        return `vi used as vt ${verb.concept}`;
+      }
+    }
+    if (adj && subject && !adjFitsNoun(adj, subject)) {
+      return `bad adj ${adj.concept} on ${subject.concept}`;
+    }
+    // Surface nonsense catch-alls that should stay gone.
+    if (/does not i\b/i.test(sentence.prompt)) return "does not i";
+    if (/\bgoe\b/i.test(sentence.prompt)) return "goe";
+    if (/\bpowiedzie\b/i.test(sentence.prompt)) return "powiedzie";
+    if (/będzie powiedzieć/i.test(sentence.prompt)) return "będzie powiedzieć";
+    if (/geerreicht/i.test(sentence.prompt)) return "geerreicht";
+    return null;
+  }
+
+  (hasDeck ? it : it.skip)("First 100/250: no restriction violations and pool still unlocks", () => {
+    for (const n of [100, 250] as const) {
+      const deck = loadBand(n);
+      const stats = allKnown(deck.map((e) => e.id));
+      const index = buildVocabIndex(deck, grammar, "en", "pl", stats, stats);
+      const pool = composePool(
+        index,
+        "en",
+        "pl",
+        { knownCount: index.nouns.length + index.verbs.length + index.adjectives.length, avgAccuracy: 0.9 },
+        { max: 120, rng: mulberry(42) },
+      );
+      expect(pool.length, `First ${n} unlock`).toBeGreaterThanOrEqual(MIN_READY_SENTENCES);
+      for (const sentence of pool) {
+        expect(sentenceViolates(sentence, index), `${n}: ${sentence.prompt}`).toBeNull();
+      }
+      // Sample richer structures across seeds.
+      for (let seed = 1; seed <= 60; seed += 1) {
+        for (const structure of ["vi", "vt", "adj", "attr-vt", "neg-vt"] as const) {
+          const sentence = composeOne(index, "en", "pl", structure, mulberry(seed + n), 3);
+          if (!sentence) continue;
+          expect(sentenceViolates(sentence, index), `${n} ${structure}: ${sentence.prompt}`).toBeNull();
+        }
+      }
+    }
   });
 });
