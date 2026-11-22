@@ -52,7 +52,9 @@ export function sentenceRows(
     const reverse = promptStats.get(entry.id);
     const pairKnown = isKnownPair(forward, reverse);
     // Lobby lists words you have practiced or added — not the entire deck.
-    if (!entry.custom && !pairKnown) continue;
+    // Keep practiced-but-not-pair-known rows (e.g. solid one way + miss the other)
+    // so Mark known can still recover them at pair level.
+    if (!entry.custom && !pairKnown && !forward && !reverse) continue;
     const display = displaySlot(entry, grammar, promptLang, answerLang);
     if (!display) continue;
     rows.push({

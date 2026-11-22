@@ -80,4 +80,19 @@ describe("sentenceRows pair-level known", () => {
     const rows = sentenceRows([alfabet], grammar, "en", "pl", new Map(), new Map());
     expect(rows).toEqual([]);
   });
+
+  it("keeps practiced-but-not-pair-known rows so Mark known can recover them", () => {
+    const solidSide = new Map<string, WordStat>([["pl-alfabet", solid()]]);
+    const missedSide = new Map<string, WordStat>([
+      ["pl-alfabet", recordAttempt(solid(10), false, 20)],
+    ]);
+    const rows = sentenceRows([alfabet], grammar, "en", "pl", solidSide, missedSide);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: "pl-alfabet",
+      pairKnown: false,
+      pairManual: false,
+      eligible: false,
+    });
+  });
 });
