@@ -77,7 +77,7 @@ Signing out keeps the browser copy, same as custom words. The next account that 
 
 ### Manual known
 
-The sentence screen can mark or unmark a lexicon word for one side of the current pair. Marking Polish while the pair is English–Polish sets `manual` to 1 on `en_pl` (the direction whose answer language is Polish) and refreshes `lastSeenMs`. It does not invent correct answers. Unmarking clears the bit. A row with no attempts and no manual bit is deleted.
+The sentence word list shows one Known/Learning status per unordered language pair and a single Mark known / Unmark control. Marking sets `manual` to 1 on **both** direction docs for the pair (`en_pl` and `pl_en`) and refreshes `lastSeenMs` on each. It does not invent correct answers. Unmarking clears the bit on both docs. A row with no attempts and no manual bit is deleted from that direction. Flashcard **Weak words** focus remains per selected direction.
 
 ## How “known” is derived
 
@@ -88,9 +88,9 @@ The sentence screen can mark or unmark a lexicon word for one side of the curren
 
 One correct answer is not enough. A later miss clears the two-in-a-row condition, so a word stops being known until it is solid again. The manual bit stays until the user clears it, including if later attempts are wrong. Lifetime counts stay either way. They feed weak-word focus, not the known bit.
 
-For the selected pair, “known in Polish” means known on the direction that **answers** in Polish (`en_pl` when the other language is English). “known in English” uses the opposite direction. Sentence quiz loads those two directions and no others. A word the user knows only on a different pair is not treated as known here, because that document is not the one this pair practices.
+For the selected pair, sentence quiz loads the two opposite direction docs and merges them at read time (`combinePairStat` / `isKnownPair`). A word the user knows only on a different pair is not treated as known here, because that document is not the one this pair practices. Storage stays per-direction (`accuracy/{from}_{to}`); there is no schema migration.
 
-A sentence-lexicon item counts as known on a side when the lexicon id itself, or any deck id listed for that item, is known on that direction. Quiz progress on `pl-103` therefore unlocks the lexicon word `house` without a second id space.
+Quiz progress on a deck id such as `pl-103` unlocks the matching grammar/lexicon word for the pair without a second id space.
 
 ## Weak words in study and quiz
 
