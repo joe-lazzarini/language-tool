@@ -1,15 +1,33 @@
 import { findDeckEntry } from "./findDeck";
 import { buildForm, cloneForm } from "./forms";
+import {
+  foldLemmaKey,
+  indexDeckCitations,
+  loadLemmaIndex,
+  resolveLemma,
+  type LemmaIndex,
+} from "./lemma";
 import { pickMemoryTranslations, type MemoryPayload } from "./mymemory";
 import { parseLangEntry, type LangParse } from "./wiktionary";
 import { LANG_CODES, languageByCode, pivotLanguage } from "./languages";
 import { normalizeAnswer } from "./match";
 import type { AcceptedAnswer, Entry, Form, LangCode } from "../types";
 
+export type LemmaChoice = {
+  /** Citation form that will be saved by default. */
+  canonical: string;
+  /** What the user typed. */
+  original: string;
+  /** static grammar/morph/deck map, or Wiktionary form-of. */
+  source: "static" | "wiktionary";
+};
+
 export type LookupDraft = {
   pos: string;
   forms: Partial<Record<LangCode, Form>>;
   notes: string[];
+  /** Set when the source language was rewritten to a dictionary lemma. */
+  lemma?: LemmaChoice;
 };
 
 type WikiPage = {
@@ -156,11 +174,26 @@ function wantedLanguages(source: LangCode, only?: readonly LangCode[]): LangCode
   return LANG_CODES.filter((code) => allowed.has(code));
 }
 
+function lemmaNote(canonical: string, original: string): string {
+  return `Saved as “${canonical}” (from “${original}”)`;
+}
+
+async function tryLemmaIndex(deck: Entry[]): Promise<LemmaIndex | null> {
+  try {
+    const index = await loadLemmaIndex();
+    indexDeckCitations(index, deck);
+    return index;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fill translations for a word typed in one language.
  * `only` limits the card to a language pair. When it is omitted, every
  * registry language is filled (older callers).
- * Order: bundled deck, English Wiktionary citation forms, then MyMemory.
+ * Order: static lemma map (grammar + morph + deck), bundled deck,
+ * English Wiktionary citation forms, then MyMemory.
  */
 export async function lookupWord(
   word: string,
@@ -174,10 +207,27 @@ export async function lookupWord(
   const notes: string[] = [];
   const forms: Partial<Record<LangCode, Form>> = {};
   let pos = "word";
+  let lemma: LemmaChoice | undefined;
 
   if (!query) return { pos, forms, notes: ["Type a word to look up."] };
 
-  const deckHit = findDeckEntry(deck.filter((entry) => !entry.custom), source, query);
+  const bundled = deck.filter((entry) => !entry.custom);
+  const index = await tryLemmaIndex(bundled);
+  const staticHit = resolveLemma(source, query, index);
+  let lookupQuery = query;
+
+  if (staticHit.changed && staticHit.hit) {
+    lookupQuery = staticHit.lemma;
+    lemma = { canonical: staticHit.lemma, original: query, source: "static" };
+    if (staticHit.hit.pos) pos = staticHit.hit.pos;
+    const lemmaForm = buildForm([{ text: staticHit.lemma }]);
+    if (lemmaForm) forms[source] = lemmaForm;
+    notes.push(lemmaNote(staticHit.lemma, query));
+  }
+
+  const deckHit =
+    findDeckEntry(bundled, source, lookupQuery) ||
+    (lookupQuery !== query ? findDeckEntry(bundled, source, query) : null);
   if (deckHit) {
     pos = deckHit.pos || pos;
     for (const code of targets) {
@@ -186,26 +236,42 @@ export async function lookupWord(
         forms[code] = cloneForm(form);
       }
     }
+    // Prefer the deck's citation form as the canonical source string.
+    const deckCitation = deckHit.forms[source]?.accepted[0]?.text || deckHit.forms[source]?.text;
+    if (deckCitation && foldLemmaKey(deckCitation, source) !== foldLemmaKey(query, source)) {
+      lemma = { canonical: deckCitation, original: query, source: lemma?.source ?? "static" };
+      if (!notes.some((note) => note.startsWith("Saved as"))) {
+        notes.push(lemmaNote(deckCitation, query));
+      }
+    }
     notes.push("Found in the built-in deck.");
   }
 
   const missing = () => targets.filter((code) => !forms[code]);
-  if (missing().length === 0) return { pos, forms, notes };
+  if (missing().length === 0) return { pos, forms, notes, lemma };
 
   if (!forms[source]) {
-    const typed = buildForm([{ text: query }]);
+    const typed = buildForm([{ text: lookupQuery }]);
     if (typed) forms[source] = typed;
   }
 
   let wikiNote = false;
   try {
-    const wiki = await lookupWiktionary(forms[source]?.accepted[0]?.text || query, source, fetchImpl);
+    const wiki = await lookupWiktionary(forms[source]?.accepted[0]?.text || lookupQuery, source, fetchImpl);
     if (wiki) {
       if (!deckHit && wiki.pos) pos = wiki.pos;
-      if (!deckHit && normalizeAnswer(wiki.lemma) !== normalizeAnswer(query)) {
+      const wikiChanged = foldLemmaKey(wiki.lemma, source) !== foldLemmaKey(query, source);
+      if (!deckHit && wikiChanged) {
         const lemmaForm = buildForm([{ text: wiki.lemma }]);
         if (lemmaForm) forms[source] = lemmaForm;
-        notes.push(`Using the dictionary form "${wiki.lemma}".`);
+        if (!lemma) {
+          lemma = { canonical: wiki.lemma, original: query, source: "wiktionary" };
+          notes.push(lemmaNote(wiki.lemma, query));
+        } else if (foldLemmaKey(lemma.canonical, source) !== foldLemmaKey(wiki.lemma, source)) {
+          // Static map already rewrote the source; keep that lemma, follow wiki for translations.
+          lemma = { ...lemma, canonical: wiki.lemma };
+          notes.push(lemmaNote(wiki.lemma, query));
+        }
       }
       for (const code of targets) {
         if (applyAnswers(forms, code, wiki.forms[code])) wikiNote = true;
@@ -218,7 +284,7 @@ export async function lookupWord(
 
   const gaps = targets.filter((code) => code !== source && !forms[code]);
   if (gaps.length > 0) {
-    const sourceText = forms[source]?.accepted[0]?.text || query;
+    const sourceText = forms[source]?.accepted[0]?.text || lookupQuery;
     const filled = await Promise.all(
       gaps.map(async (code) => {
         try {
@@ -242,5 +308,5 @@ export async function lookupWord(
       targets.length === 2 ? "Fill in the blank language, then save." : "Fill in any blank language, then save.",
     );
   }
-  return { pos, forms, notes };
+  return { pos, forms, notes, lemma };
 }

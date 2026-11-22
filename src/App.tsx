@@ -921,6 +921,7 @@ export function App() {
             from={settings.from}
             to={settings.to}
             initial={editing}
+            customWords={pairWords}
             onCancel={() => {
               setEditing(null);
               setScreen(editing ? "list" : "home");
@@ -931,6 +932,20 @@ export function App() {
             }}
             onViewList={() => setScreen("list")}
             onQuizMyWords={(word) => quizMyWords(word)}
+            onOpenExisting={(hit) => {
+              if (hit.kind === "custom" && hit.word) {
+                quizMyWords(hit.word);
+                return;
+              }
+              if (hit.entry) {
+                const next: Settings = { ...settings, mode: "quiz", range: settings.range };
+                setSettings(next);
+                setSession(
+                  selectCards([hit.entry], accuracy.read(settings.from, settings.to), next.focus, 10),
+                );
+                setScreen("home");
+              }
+            }}
           />
         )}
         {!session && screen === "list" && (
