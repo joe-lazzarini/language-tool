@@ -233,9 +233,33 @@ describe("selectCards", () => {
   it("Off novelty bias matches the previous uniform shuffle for the same RNG", () => {
     const rngA = seededRng(42);
     const rngB = seededRng(42);
+    const rngC = seededRng(42);
     const without = selectCards(pool, stats, "all", 3, rngA);
     const withOff = selectCards(pool, stats, "all", 3, rngB, { noveltyBias: "off" });
+    // Reverse stats must not affect Off — same shuffle as the no-options path.
+    const withUnusedReverse = selectCards(pool, stats, "all", 3, rngC, {
+      noveltyBias: "off",
+      reverseStats: new Map([["a", solid(9)]]),
+    });
     expect(withOff.map((card) => card.id)).toEqual(without.map((card) => card.id));
+    expect(withUnusedReverse.map((card) => card.id)).toEqual(without.map((card) => card.id));
+  });
+
+  it("Medium bias still returns every card when size is All", () => {
+    const practiced: WordStat = {
+      correct: 40,
+      attempts: 50,
+      lastSeen: 100,
+      windowBits: 0xff,
+      windowLen: 8,
+      manual: false,
+    };
+    const forward = new Map<string, WordStat>([["a", practiced], ["b", once(2)]]);
+    const picked = selectCards(pool, forward, "all", "all", seededRng(3), {
+      noveltyBias: "medium",
+      reverseStats: new Map(),
+    });
+    expect(picked.map((card) => card.id).sort()).toEqual(["a", "b", "c", "d"]);
   });
 
   it("Strong novelty bias picks unseen words before heavily practiced ones", () => {

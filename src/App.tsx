@@ -872,6 +872,18 @@ export function App() {
     [rangeBand, accuracy.read, accuracy.revision, deferredFrom, deferredTo],
   );
 
+  /** Reverse-direction stats only matter for All-focus novelty weighting. */
+  function selectOptionsFor(next: Settings) {
+    const noveltyBias = next.noveltyBias;
+    if (next.focus === "weak" || noveltyBias === "off") {
+      return { noveltyBias };
+    }
+    return {
+      noveltyBias,
+      reverseStats: accuracy.read(next.to, next.from),
+    };
+  }
+
   function start() {
     const band = wordsForRange(
       entriesForPair(
@@ -882,12 +894,8 @@ export function App() {
       settings.range,
     );
     const forward = accuracy.read(settings.from, settings.to);
-    const reverse = accuracy.read(settings.to, settings.from);
     setSession(
-      selectCards(band, forward, settings.focus, settings.size, Math.random, {
-        noveltyBias: settings.noveltyBias,
-        reverseStats: reverse,
-      }),
+      selectCards(band, forward, settings.focus, settings.size, Math.random, selectOptionsFor(settings)),
     );
   }
 
@@ -905,12 +913,8 @@ export function App() {
       return;
     }
     const forward = accuracy.read(settings.from, settings.to);
-    const reverse = accuracy.read(settings.to, settings.from);
     setSession(
-      selectCards(band, forward, next.focus, next.size, Math.random, {
-        noveltyBias: next.noveltyBias,
-        reverseStats: reverse,
-      }),
+      selectCards(band, forward, next.focus, next.size, Math.random, selectOptionsFor(next)),
     );
     setScreen("home");
   }
