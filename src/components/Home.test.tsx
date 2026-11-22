@@ -14,6 +14,7 @@ const baseSettings: Settings = {
   range: "top100",
   size: 10,
   focus: "all",
+  noveltyBias: "medium",
 };
 
 const sentence = {
@@ -127,5 +128,24 @@ describe("Home practice source", () => {
     expect(container.querySelector(".primary")?.textContent).toBe("Start study · My words (4)");
     const focusOn = [...container.querySelectorAll(".segment button.on")].map((item) => item.textContent);
     expect(focusOn).toContain("Weak words");
+  });
+
+  it("exposes Newer words bias next to study options", () => {
+    const changes: string[] = [];
+    const { container } = renderHome({
+      setSettings: (next) => {
+        changes.push(next.noveltyBias);
+      },
+    });
+    expect(container.textContent).toContain("Newer words");
+    expect(container.textContent).toContain("Prefers less-practiced words");
+    const strong = [...container.querySelectorAll(".segment button")].find(
+      (item) => item.textContent === "Strong",
+    );
+    expect(strong).toBeTruthy();
+    act(() => {
+      strong?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(changes[0]).toBe("strong");
   });
 });
