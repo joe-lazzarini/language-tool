@@ -595,6 +595,14 @@ a {
   color: var(--ink-soft);
 }
 
+.lemma-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 8px;
+}
+
 .words-tools {
   margin: 0 0 4px;
 }

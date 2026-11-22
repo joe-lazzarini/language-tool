@@ -2,6 +2,20 @@ import type { LangCode } from "../lib/languages";
 
 export type Sem = "person" | "animal" | "place" | "thing" | "food" | "drink" | "readable";
 
+/**
+ * Light adjective–noun compatibility domains.
+ * Adjectives list what they modify; nouns list what they accept.
+ * `open` on an adjective means unconstrained; nouns never need `open`.
+ */
+export type AdjDomain =
+  | "human"
+  | "physical"
+  | "taste"
+  | "nationality"
+  | "evaluative"
+  | "temporal"
+  | "open";
+
 export type Gender = "m" | "f" | "n";
 
 /** Legacy single-clause shapes kept as structure tags; compositional ids are richer. */
@@ -69,6 +83,8 @@ export type GrammarWord = {
   pos: "noun" | "verb" | "adjective";
   concept?: string;
   sem?: Sem[];
+  /** Adjective domains, or noun-accepted domains for adj compatibility. */
+  domains?: AdjDomain[];
   valence?: "vi" | "vt";
   subject?: Sem[];
   object?: Sem[];
@@ -86,6 +102,8 @@ export type SlotWord = {
   pos: "noun" | "verb" | "adjective";
   concept?: string;
   sem: Sem[];
+  /** Adjective domains, or noun-accepted domains for adj compatibility. */
+  domains?: AdjDomain[];
   valence?: "vi" | "vt";
   subject?: Sem[];
   object?: Sem[];

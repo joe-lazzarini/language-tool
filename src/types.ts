@@ -6,6 +6,9 @@ export type Mode = "study" | "quiz";
 
 export type Focus = "all" | "weak";
 
+/** Prefer less-practiced words when Focus is All. Off keeps a uniform shuffle. */
+export type NoveltyBias = "off" | "light" | "medium" | "strong";
+
 export type AcceptedAnswer = {
   text: string;
   /** Short gender / sense / register label shown on reveal. */
@@ -103,6 +106,11 @@ export type Settings = {
   size: SessionSize;
   /** All uses the whole band. Weak prefers cards with low accuracy in the selected direction only. */
   focus: Focus;
+  /**
+   * When Focus is All, weighted shuffle favors words with fewer combined A↔B attempts.
+   * Off keeps the previous uniform shuffle. Weak words mode ignores this.
+   */
+  noveltyBias: NoveltyBias;
 };
 
 export type CardResult = {
