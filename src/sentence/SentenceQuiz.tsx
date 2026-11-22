@@ -12,12 +12,13 @@ import {
   SPECIAL_LETTERS,
   type LangCode,
 } from "../lib/languages";
+import { canAdvanceAfterReveal, mustConfirmRetype } from "../lib/retypeGate";
 import {
   uniqueMissedSentences,
   uniqueMissedSentenceWords,
 } from "../lib/sessionResults";
 import type { Entry } from "../types";
-import { gradeSentence, type GradePart } from "./check";
+import { gradeSentence, isCorrectSentence, type GradePart } from "./check";
 import {
   generateSentences,
   MIN_READY_SENTENCES,
@@ -156,6 +157,8 @@ export function SentenceQuiz({
   const [input, setInput] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [correct, setCorrect] = useState<boolean | null>(null);
+  const [retypeConfirmed, setRetypeConfirmed] = useState(false);
+  const [retypeHint, setRetypeHint] = useState<string | null>(null);
   const [gradeParts, setGradeParts] = useState<GradePart[] | null>(null);
   const [results, setResults] = useState<
     { sentence: PracticeSentence; correct: boolean; given: string; wrongTokens?: string[] }[]
@@ -211,13 +214,19 @@ export function SentenceQuiz({
     return map;
   }, [studyEntries]);
 
-  useEffect(() => {
-    if (phase === "round") inputRef.current?.focus();
-  }, [phase, index, done]);
+  const sentence = round[index];
+  const specials = SPECIAL_LETTERS[to] ?? [];
+  const awaitingRetype = mustConfirmRetype(revealed, correct, retypeConfirmed);
+  const canAdvance = canAdvanceAfterReveal(revealed, correct, retypeConfirmed);
 
   useEffect(() => {
-    if (revealed) inputRef.current?.blur();
-  }, [revealed]);
+    if (phase !== "round" || done) return;
+    if (canAdvance) {
+      inputRef.current?.blur();
+      return;
+    }
+    inputRef.current?.focus();
+  }, [phase, index, done, canAdvance, awaitingRetype]);
 
   function toggle(side: "prompt" | "answer", id: string, manual: boolean) {
     if (side === "answer") onToggleManual(from, to, id, manual);
@@ -226,24 +235,23 @@ export function SentenceQuiz({
 
   function start() {
     if (sentences.length < MIN_READY_SENTENCES) return;
-    const next = sampleSentences(sentences, SENTENCE_ROUND, Math.random, previousIds, previousStructures);
-    setPreviousIds(new Set(next.map((item) => item.id)));
-    setPreviousStructures(new Set(next.map((item) => item.structure)));
-    setRound(next);
+    const nextRound = sampleSentences(sentences, SENTENCE_ROUND, Math.random, previousIds, previousStructures);
+    setPreviousIds(new Set(nextRound.map((item) => item.id)));
+    setPreviousStructures(new Set(nextRound.map((item) => item.structure)));
+    setRound(nextRound);
     indexRef.current = 0;
     setIndex(0);
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
     setGradeParts(null);
     resultsRef.current = [];
     setResults([]);
     setDone(false);
     setPhase("round");
   }
-
-  const sentence = round[index];
-  const specials = SPECIAL_LETTERS[to] ?? [];
 
   function commitSentenceResult(
     item: PracticeSentence,
@@ -257,6 +265,7 @@ export function SentenceQuiz({
   }
 
   function insertLetter(letter: string) {
+    if (canAdvance) return;
     const field = inputRef.current;
     if (!field) {
       setInput((value) => value + letter);
@@ -264,13 +273,19 @@ export function SentenceQuiz({
     }
     const start = field.selectionStart ?? input.length;
     const end = field.selectionEnd ?? input.length;
-    const next = input.slice(0, start) + letter + input.slice(end);
-    setInput(next);
+    const nextValue = input.slice(0, start) + letter + input.slice(end);
+    setInput(nextValue);
     requestAnimationFrame(() => {
       field.focus();
       const pos = start + letter.length;
       field.setSelectionRange(pos, pos);
     });
+  }
+
+  function beginMissRetype() {
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
+    setInput("");
   }
 
   function check(given = input) {
@@ -281,6 +296,11 @@ export function SentenceQuiz({
     setRevealed(true);
     const wrongTokens = grade.correct ? undefined : grade.parts.filter((part) => !part.ok).map((part) => part.text);
     commitSentenceResult(sentence, grade.correct, given.trim(), wrongTokens);
+    if (!grade.correct) beginMissRetype();
+    else {
+      setRetypeConfirmed(false);
+      setRetypeHint(null);
+    }
   }
 
   function skip() {
@@ -290,6 +310,21 @@ export function SentenceQuiz({
     setGradeParts(null);
     setRevealed(true);
     commitSentenceResult(sentence, false, input.trim());
+    beginMissRetype();
+  }
+
+  function confirmRetype(given = input) {
+    if (!sentence || !awaitingRetype || shouldBlockGradeOrAdvance(composingRef.current)) return;
+    if (!given.trim()) return;
+    const ok = isCorrectSentence(given, sentence.accepted, to, from);
+    if (!ok) {
+      setRetypeHint("Not quite — type one of the answers above.");
+      // Confirm was likely tapped; restore focus so the mobile keyboard stays up.
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    setRetypeConfirmed(true);
+    setRetypeHint(null);
   }
 
   function finish() {
@@ -298,6 +333,7 @@ export function SentenceQuiz({
   }
 
   function next() {
+    if (!canAdvanceAfterReveal(revealed, correct, retypeConfirmed)) return;
     if (indexRef.current + 1 >= round.length) {
       finish();
       return;
@@ -307,6 +343,8 @@ export function SentenceQuiz({
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
     setGradeParts(null);
   }
 
@@ -329,7 +367,7 @@ export function SentenceQuiz({
       const result = applyAdvanceKey(heldKeys.current, {
         key: event.key,
         repeat: event.repeat,
-        revealed,
+        revealed: canAdvance,
         composing,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
@@ -351,7 +389,7 @@ export function SentenceQuiz({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [phase, revealed, done]);
+  }, [phase, canAdvance, done]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -359,6 +397,10 @@ export function SentenceQuiz({
     if (!revealed) {
       if (!input.trim()) return;
       check();
+      return;
+    }
+    if (awaitingRetype) {
+      confirmRetype();
       return;
     }
     next();
@@ -484,13 +526,16 @@ export function SentenceQuiz({
         </article>
         <form className="answer" onSubmit={onSubmit}>
           <label className="sr" htmlFor="sentence-answer">
-            Your translation
+            {awaitingRetype ? "Retype the correct sentence" : "Your translation"}
           </label>
           <input
             id="sentence-answer"
             ref={inputRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              if (retypeHint) setRetypeHint(null);
+            }}
             onCompositionStart={() => {
               composingRef.current = true;
             }}
@@ -506,13 +551,24 @@ export function SentenceQuiz({
             autoCorrect="off"
             autoComplete="off"
             spellCheck={false}
-            enterKeyHint={revealed ? "go" : "done"}
+            enterKeyHint={canAdvance ? "go" : "done"}
             lang={languageByCode(to).locale}
-            placeholder={answerPlaceholder(to).replace("word", "sentence")}
-            disabled={revealed}
+            placeholder={
+              awaitingRetype
+                ? "Type the correct sentence"
+                : answerPlaceholder(to).replace("word", "sentence")
+            }
+            disabled={canAdvance}
+            aria-invalid={retypeHint ? true : undefined}
           />
-          {languageByCode(to).answerHint ? <p className="hint">{languageByCode(to).answerHint}</p> : null}
-          <SpecialKeys letters={!revealed ? specials : []} label={`${languageName(to)} letters`} onInsert={insertLetter} />
+          {languageByCode(to).answerHint && !canAdvance ? (
+            <p className="hint">{languageByCode(to).answerHint}</p>
+          ) : null}
+          <SpecialKeys
+            letters={!canAdvance ? specials : []}
+            label={`${languageName(to)} letters`}
+            onInsert={insertLetter}
+          />
           <div className="actions">
             {!revealed ? (
               <>
@@ -523,6 +579,18 @@ export function SentenceQuiz({
                   Skip
                 </button>
               </>
+            ) : awaitingRetype ? (
+              <div className="next-row">
+                <button type="submit" className="primary" disabled={!input.trim()}>
+                  Confirm
+                </button>
+                <p className="hint retype-hint">Type the correct sentence to continue</p>
+                {retypeHint ? (
+                  <p className="bad-text retype-feedback" role="status">
+                    {retypeHint}
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <div className="next-row">
                 <button type="submit" className="primary">

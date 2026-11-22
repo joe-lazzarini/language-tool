@@ -528,9 +528,17 @@ a {
   gap: 6px;
 }
 
-.advance-hint {
+.advance-hint,
+.retype-hint {
   text-align: center;
   font-size: 0.8rem;
+}
+
+.retype-feedback {
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.92rem;
 }
 
 .misses {

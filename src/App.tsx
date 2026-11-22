@@ -51,6 +51,7 @@ import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "./lib/ime";
 import { isCorrectAnswer } from "./lib/match";
+import { canAdvanceAfterReveal, mustConfirmRetype } from "./lib/retypeGate";
 import { scoreSummary } from "./lib/sessionResults";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
@@ -439,6 +440,8 @@ export function Session({
   const [input, setInput] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [correct, setCorrect] = useState<boolean | null>(null);
+  const [retypeConfirmed, setRetypeConfirmed] = useState(false);
+  const [retypeHint, setRetypeHint] = useState<string | null>(null);
   const [results, setResults] = useState<CardResult[]>([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -454,14 +457,17 @@ export function Session({
   const prompt = word ? promptFor(word, from) : "";
   const expected = word ? expectedFor(word, to) : "";
   const specials = SPECIAL_LETTERS[to] ?? [];
+  const awaitingRetype = mustConfirmRetype(revealed, correct, retypeConfirmed);
+  const canAdvance = canAdvanceAfterReveal(revealed, correct, retypeConfirmed);
 
   useEffect(() => {
+    if (done) return;
+    if (canAdvance) {
+      inputRef.current?.blur();
+      return;
+    }
     inputRef.current?.focus();
-  }, [index, done]);
-
-  useEffect(() => {
-    if (revealed) inputRef.current?.blur();
-  }, [revealed]);
+  }, [index, done, canAdvance, awaitingRetype]);
 
   function commitResult(entry: Entry, ok: boolean, given: string) {
     const row: CardResult = { word: entry, correct: ok, given };
@@ -471,6 +477,7 @@ export function Session({
   }
 
   function insertLetter(letter: string) {
+    if (canAdvance) return;
     const field = inputRef.current;
     if (!field) {
       setInput((value) => value + letter);
@@ -487,12 +494,23 @@ export function Session({
     });
   }
 
+  function beginMissRetype() {
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
+    setInput("");
+  }
+
   function check(given = input) {
     if (!word || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
     const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     setCorrect(ok);
     setRevealed(true);
     commitResult(word, ok, given.trim());
+    if (!ok) beginMissRetype();
+    else {
+      setRetypeConfirmed(false);
+      setRetypeHint(null);
+    }
   }
 
   function reveal() {
@@ -501,6 +519,22 @@ export function Session({
     setCorrect(mode === "quiz" ? false : null);
     setRevealed(true);
     commitResult(word, false, input.trim());
+    beginMissRetype();
+  }
+
+  function confirmRetype(given = input) {
+    if (!word || !awaitingRetype || shouldBlockGradeOrAdvance(composingRef.current)) return;
+    if (!given.trim()) return;
+    const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
+    if (!ok) {
+      setRetypeHint("Not quite — type one of the answers above.");
+      // Confirm was likely tapped; restore focus so the mobile keyboard stays up.
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    // Retype only unlocks advance; the miss already recorded stays a miss.
+    setRetypeConfirmed(true);
+    setRetypeHint(null);
   }
 
   function finish() {
@@ -509,6 +543,7 @@ export function Session({
   }
 
   function next() {
+    if (!canAdvanceAfterReveal(revealed, correct, retypeConfirmed)) return;
     if (indexRef.current + 1 >= total) {
       finish();
       return;
@@ -518,6 +553,8 @@ export function Session({
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
   }
 
   function requestExit() {
@@ -539,7 +576,9 @@ export function Session({
       const result = applyAdvanceKey(heldKeys.current, {
         key: event.key,
         repeat: event.repeat,
-        revealed,
+        // Treat unconfirmed misses as not-yet-revealed for advance shortcuts,
+        // so Space cannot skip the required retype.
+        revealed: canAdvance,
         composing,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
@@ -561,7 +600,7 @@ export function Session({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [revealed, done]);
+  }, [canAdvance, done]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -569,6 +608,10 @@ export function Session({
     if (!revealed) {
       if (!input.trim()) return;
       check();
+      return;
+    }
+    if (awaitingRetype) {
+      confirmRetype();
       return;
     }
     next();
@@ -656,13 +699,16 @@ export function Session({
 
       <form className="answer" onSubmit={onSubmit}>
         <label className="sr" htmlFor="answer">
-          Your translation
+          {awaitingRetype ? "Retype the correct answer" : "Your translation"}
         </label>
         <input
           id="answer"
           ref={inputRef}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            setInput(event.target.value);
+            if (retypeHint) setRetypeHint(null);
+          }}
           onCompositionStart={() => {
             composingRef.current = true;
           }}
@@ -679,14 +725,17 @@ export function Session({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          enterKeyHint={revealed ? "go" : "done"}
+          enterKeyHint={canAdvance ? "go" : "done"}
           lang={languageByCode(to).locale}
-          placeholder={answerPlaceholder(to)}
-          disabled={revealed}
+          placeholder={awaitingRetype ? "Type the correct answer" : answerPlaceholder(to)}
+          disabled={canAdvance}
+          aria-invalid={retypeHint ? true : undefined}
         />
-        {languageByCode(to).answerHint ? <p className="hint">{languageByCode(to).answerHint}</p> : null}
+        {languageByCode(to).answerHint && !canAdvance ? (
+          <p className="hint">{languageByCode(to).answerHint}</p>
+        ) : null}
         <SpecialKeys
-          letters={!revealed ? specials : []}
+          letters={!canAdvance ? specials : []}
           label={`${languageName(to)} letters`}
           onInsert={insertLetter}
         />
@@ -700,6 +749,18 @@ export function Session({
                 {mode === "quiz" ? "Skip" : "Reveal"}
               </button>
             </>
+          ) : awaitingRetype ? (
+            <div className="next-row">
+              <button type="submit" className="primary" disabled={!input.trim()}>
+                Confirm
+              </button>
+              <p className="hint retype-hint">Type the correct answer to continue</p>
+              {retypeHint ? (
+                <p className="bad-text retype-feedback" role="status">
+                  {retypeHint}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="next-row">
               <button type="submit" className="primary">
