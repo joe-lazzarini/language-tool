@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { LANG_CODES } from "../lib/languages";
+import { loadLemmaIndex, resetLemmaIndexCache } from "./lemma";
 import { lookupWord } from "./translate";
+import type { GrammarFile } from "../sentence/types";
 import type { Entry, LangCode } from "../types";
 
 function withEveryLanguage(entry: Entry): Entry {
@@ -63,6 +65,10 @@ function wikiFetch(calls: string[]): typeof fetch {
 }
 
 describe("lookupWord", () => {
+  afterEach(() => {
+    resetLemmaIndexCache();
+  });
+
   it("uses the bundled deck and does not call the network", async () => {
     let called = false;
     const fetchImpl = (async () => {
@@ -98,11 +104,95 @@ describe("lookupWord", () => {
     expect(draft.forms.en?.accepted[0]?.text).toBe("cat");
     expect(draft.forms.de?.accepted).toEqual([{ text: "Katze", context: "feminine" }]);
     expect(draft.pos).toBe("noun");
-    expect(draft.notes.join(" ")).toMatch(/dictionary form "kot"/);
+    expect(draft.notes.join(" ")).toMatch(/Saved as “kot” \(from “koty”\)/);
+    expect(draft.lemma).toEqual({ canonical: "kot", original: "koty", source: "wiktionary" });
     expect(draft.notes.join(" ")).toMatch(/Wiktionary/);
     expect(calls).toContain("koty");
     expect(calls).toContain("kot");
     expect(calls).toContain("cat/translations");
+  });
+
+  it("uses the static grammar/morph lemma map before calling the network", async () => {
+    resetLemmaIndexCache();
+    const grammar: GrammarFile = {
+      version: 1,
+      words: {
+        go: {
+          pos: "verb",
+          langs: {
+            pl: { lemma: "iść", fin: "idzie" },
+            en: { lemma: "go", fin: "goes" },
+          },
+        },
+      },
+    };
+    await loadLemmaIndex(async () => grammar);
+
+    let called = false;
+    const fetchImpl = (async () => {
+      called = true;
+      throw new Error("network");
+    }) as typeof fetch;
+
+    const draft = await lookupWord("idzie", "pl", [], fetchImpl, ["pl", "en"]);
+    expect(draft.forms.pl?.text).toBe("iść");
+    expect(draft.lemma).toEqual({ canonical: "iść", original: "idzie", source: "static" });
+    expect(draft.notes.join(" ")).toMatch(/Saved as “iść”/);
+    // Still tries MyMemory for the missing English line.
+    expect(called).toBe(true);
+    expect(draft.forms.en).toBeUndefined();
+    resetLemmaIndexCache();
+  });
+
+  it("keeps the static lemma when Wiktionary returns a different citation", async () => {
+    resetLemmaIndexCache();
+    const grammar: GrammarFile = {
+      version: 1,
+      words: {
+        go: {
+          pos: "verb",
+          langs: {
+            pl: { lemma: "iść", fin: "idzie" },
+            en: { lemma: "go", fin: "goes" },
+          },
+        },
+      },
+    };
+    await loadLemmaIndex(async () => grammar);
+
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("wiktionary")) {
+        const page = new URL(url).searchParams.get("page") || "";
+        if (page === "iść" || page === "idzie") {
+          return {
+            ok: true,
+            json: async () => ({
+              parse: {
+                title: page,
+                wikitext: {
+                  "*": `==Polish==\n===Verb===\n# {{form of|pl|chodzić}}\n`,
+                },
+              },
+            }),
+          } as Response;
+        }
+        return { ok: true, json: async () => ({ error: { code: "missingtitle" } }) } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          responseData: { translatedText: "go" },
+          matches: [{ translation: "go", match: 1 }],
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const draft = await lookupWord("idzie", "pl", [], fetchImpl, ["pl", "en"]);
+    expect(draft.forms.pl?.text).toBe("iść");
+    expect(draft.lemma).toEqual({ canonical: "iść", original: "idzie", source: "static" });
+    expect(draft.notes.filter((note) => note.startsWith("Saved as"))).toHaveLength(1);
+    resetLemmaIndexCache();
   });
 
   it("falls back to MyMemory when Wiktionary has no entry", async () => {
