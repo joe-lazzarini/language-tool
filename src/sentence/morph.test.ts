@@ -20,6 +20,7 @@ describe("morphology helpers", () => {
     expect(enPlural("child")).toBe("children");
     expect(enPast("sleep")).toBe("slept");
     expect(enPast("work")).toBe("worked");
+    expect(enPast("become")).toBe("became");
   });
 
   it("forms Polish past, future, locative, genitive, plural, attributive", () => {
@@ -27,7 +28,12 @@ describe("morphology helpers", () => {
     expect(plPast("spać", "f")).toBe("spała");
     expect(plPast("spać", "n")).toBe("spało");
     expect(plPast("widzieć", "m")).toBe("widział");
+    expect(plPast("myśleć", "m")).toBe("myślał");
+    expect(plPast("rozumieć", "f")).toBe("rozumiała");
+    expect(plPast("należeć", "m")).toBe("należał");
     expect(plFuture("spać")).toBe("będzie spać");
+    expect(plFuture("powiedzieć")).toBe("powie");
+    expect(dePerfect("erreichen", "erreicht")).toBe("hat erreicht");
     expect(plLocative("dom", "m")).toBe("domu");
     expect(plGenitive("dom", "m")).toBe("domu");
     expect(plGenitive("książka", "f")).toBe("książki");

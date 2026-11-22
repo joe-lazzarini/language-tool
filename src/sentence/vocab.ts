@@ -2,6 +2,7 @@ import { combinePairStat, isKnown, isWeak, type WordStat } from "../accuracy/sta
 import type { LangCode } from "../lib/languages";
 import type { Entry } from "../types";
 import type {
+  AdjDomain,
   Gender,
   GrammarFile,
   GrammarWord,
@@ -13,11 +14,78 @@ import type {
 
 const SENTENCE_POS = new Set(["noun", "verb", "adjective"]);
 
-function normalizePos(pos: string): "noun" | "verb" | "adjective" | null {
+/** Conservative default for unlisted / custom / proper nouns. */
+export const DEFAULT_NOUN_SEM: Sem[] = ["thing"];
+
+/** Default verb subject when grammar omits restrictions — animate agents only. */
+export const DEFAULT_VERB_SUBJECT: Sem[] = ["person", "animal"];
+
+export function normalizePos(pos: string): "noun" | "verb" | "adjective" | null {
   const key = pos.trim().toLowerCase();
   if (key === "proper noun") return "noun";
   if (SENTENCE_POS.has(key)) return key as "noun" | "verb" | "adjective";
   return null;
+}
+
+/** Derive noun-accepted adjective domains from semantic tags when unset. */
+export function domainsFromSem(sem: readonly Sem[]): AdjDomain[] {
+  const out: AdjDomain[] = [];
+  const add = (d: AdjDomain) => {
+    if (!out.includes(d)) out.push(d);
+  };
+  if (sem.includes("person")) {
+    add("human");
+    add("physical");
+    add("evaluative");
+    add("nationality");
+  }
+  if (sem.includes("animal")) {
+    add("human");
+    add("physical");
+    add("evaluative");
+  }
+  if (sem.includes("place")) {
+    add("physical");
+    add("evaluative");
+    add("nationality");
+  }
+  if (sem.includes("food") || sem.includes("drink")) {
+    add("physical");
+    add("taste");
+    add("evaluative");
+  }
+  if (sem.includes("readable")) {
+    add("physical");
+    add("evaluative");
+  }
+  if (sem.includes("thing")) {
+    add("physical");
+    add("evaluative");
+  }
+  if (out.length === 0) {
+    add("physical");
+    add("evaluative");
+  }
+  return out;
+}
+
+/**
+ * Hook for tagging a concept when a custom word is added.
+ * Keep defaults conservative; a later PR may expose category UI.
+ */
+export function defaultGrammarTagsForNewWord(
+  pos: "noun" | "verb" | "adjective" | string,
+  opts: { sem?: Sem[]; domains?: AdjDomain[]; placeName?: boolean } = {},
+): Pick<GrammarWord, "sem" | "domains" | "valence" | "subject" | "object"> {
+  const normalized = normalizePos(pos) ?? "noun";
+  if (normalized === "noun") {
+    const sem = opts.sem ?? (opts.placeName ? (["place", "thing"] as Sem[]) : DEFAULT_NOUN_SEM);
+    return { sem, domains: opts.domains ?? domainsFromSem(sem) };
+  }
+  if (normalized === "verb") {
+    return { valence: "vi", subject: DEFAULT_VERB_SUBJECT };
+  }
+  return { domains: opts.domains ?? (["evaluative", "open"] as AdjDomain[]) };
 }
 
 function genderFromContext(context: string | undefined): Gender | null {
@@ -64,7 +132,13 @@ function inferGender(entry: Entry, lang: LangCode, lemma: string): Gender | null
 }
 
 function en3sg(lemma: string): string {
-  const w = lemma.toLowerCase();
+  const w = lemma.toLowerCase().replace(/^to\s+/, "").trim();
+  const invariant = new Set(["must", "can", "may", "might", "should", "would", "could", "shall", "will", "ought"]);
+  if (invariant.has(w)) return w;
+  if (w === "be" || w === "be able to") return w === "be" ? "is" : "is able to";
+  if (w === "have") return "has";
+  if (w === "do") return "does";
+  if (w === "go") return "goes";
   if (w.endsWith("s") || w.endsWith("x") || w.endsWith("z") || w.endsWith("ch") || w.endsWith("sh")) return `${w}es`;
   if (w.endsWith("y") && w.length > 1 && !"aeiou".includes(w[w.length - 2]!)) return `${w.slice(0, -1)}ies`;
   return `${w}s`;
@@ -82,11 +156,38 @@ function pl3sg(lemma: string): string | null {
     móc: "może",
     chcieć: "chce",
     wiedzieć: "wie",
+    powiedzieć: "powie",
+    opowiedzieć: "opowie",
+    jechać: "jedzie",
+    myśleć: "myśli",
+    pomyśleć: "pomyśli",
+    słyszeć: "słyszy",
+    siedzieć: "siedzi",
+    stać: "stoi",
+    musieć: "musi",
+    żyć: "żyje",
+    brać: "bierze",
+    rozumieć: "rozumie",
+    zrozumieć: "zrozumie",
+    patrzeć: "patrzy",
+    należeć: "należy",
+    leżeć: "leży",
+    zależeć: "zależy",
+    istnieć: "istnieje",
+    brzmieć: "brzmi",
+    woleć: "woli",
+    umieć: "umie",
+    odpowiedzieć: "odpowie",
+    dowiedzieć: "dowie",
+    przypomnieć: "przypomni",
+    wspomnieć: "wspomni",
   };
   const w = lemma.toLowerCase();
   if (irregular[w]) return irregular[w]!;
   if (w.endsWith("ować")) return `${w.slice(0, -4)}uje`;
   if (w.endsWith("awać")) return `${w.slice(0, -4)}aje`;
+  // -ieć (widzieć-style) → -i, not naive -e (*powiedzie). Covered irregulars above.
+  if (w.endsWith("ieć")) return `${w.slice(0, -3)}i`;
   if (w.endsWith("ać")) return `${w.slice(0, -2)}a`;
   if (w.endsWith("eć")) return `${w.slice(0, -2)}e`;
   if (w.endsWith("ić")) return `${w.slice(0, -2)}i`;
@@ -304,14 +405,22 @@ export function buildVocabIndex(
     if (pos === "noun" && answerLang === "pl") answer = repairPlNounAcc(answer, animate);
     if (!surfaceReady(pos, prompt, promptLang) || !surfaceReady(pos, answer, answerLang)) continue;
 
+    const sem: Sem[] =
+      (meta?.sem as Sem[] | undefined) ??
+      (pos === "noun" ? DEFAULT_NOUN_SEM : []);
+    const domains: AdjDomain[] | undefined =
+      (meta?.domains as AdjDomain[] | undefined) ??
+      (pos === "noun" ? domainsFromSem(sem) : pos === "adjective" ? (["evaluative", "open"] as AdjDomain[]) : undefined);
+
     const slot: SlotWord = {
       id: entry.id,
       pos,
       concept: entry.concept ?? meta?.concept,
-      // Unknown nouns may fill any noun slot; curated grammar still supplies tighter tags.
-      sem: (meta?.sem as Sem[] | undefined) ?? (pos === "noun" ? ["thing", "person", "animal", "place", "food", "drink", "readable"] : []),
+      // Unlisted / custom / proper nouns default to conservative "thing" only.
+      sem,
+      domains,
       valence: meta?.valence ?? (pos === "verb" ? "vi" : undefined),
-      subject: meta?.subject ?? (pos === "verb" ? ["person", "animal", "thing", "place"] : undefined),
+      subject: meta?.subject ?? (pos === "verb" ? DEFAULT_VERB_SUBJECT : undefined),
       object: meta?.object,
       prompt,
       answer,
