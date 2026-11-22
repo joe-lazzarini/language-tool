@@ -319,6 +319,8 @@ export function SentenceQuiz({
     const ok = isCorrectSentence(given, sentence.accepted, to, from);
     if (!ok) {
       setRetypeHint("Not quite — type one of the answers above.");
+      // Confirm was likely tapped; restore focus so the mobile keyboard stays up.
+      requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
     setRetypeConfirmed(true);

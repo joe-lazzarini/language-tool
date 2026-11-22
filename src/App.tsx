@@ -492,6 +492,8 @@ export function Session({
     const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     if (!ok) {
       setRetypeHint("Not quite — type one of the answers above.");
+      // Confirm was likely tapped; restore focus so the mobile keyboard stays up.
+      requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
     // Retype only unlocks advance; the miss already recorded stays a miss.

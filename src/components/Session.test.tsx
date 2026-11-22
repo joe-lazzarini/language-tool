@@ -390,6 +390,25 @@ describe("Session advance shortcut", () => {
     expect(graded).toEqual([{ id: "cat", correct: false }]);
   });
 
+  it("refocuses the answer field after a failed Confirm tap", async () => {
+    const { container } = session("quiz", words.slice(0, 2));
+    act(() => {
+      buttonNamed(container, "Skip").click();
+    });
+    expect(document.activeElement).toBe(answerInput(container));
+    setValue(answerInput(container), "wrong");
+    act(() => {
+      buttonNamed(container, "Confirm").click();
+    });
+    expect(container.querySelector(".retype-feedback")?.textContent).toContain("Not quite");
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+    expect(document.activeElement).toBe(answerInput(container));
+  });
+
   it("accepts any matching form when confirming a study reveal retype", () => {
     const multi: Entry = {
       id: "this",
