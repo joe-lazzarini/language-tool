@@ -7,6 +7,7 @@ import {
   resolveLemma,
   type LemmaIndex,
 } from "./lemma";
+import { lemmaCandidates } from "./lemmaRules";
 import { pickMemoryTranslations, type MemoryPayload } from "./mymemory";
 import { parseLangEntry, type LangParse } from "./wiktionary";
 import { LANG_CODES, languageByCode, pivotLanguage } from "./languages";
@@ -49,13 +50,19 @@ async function fetchWikiPage(page: string, fetchImpl: typeof fetch): Promise<Wik
   url.searchParams.set("prop", "wikitext");
   url.searchParams.set("format", "json");
   url.searchParams.set("redirects", "1");
+  // origin=* enables CORS from GitHub Pages / local preview.
   url.searchParams.set("origin", "*");
   const response = await fetchImpl(url.toString(), { headers: { Accept: "application/json" } });
   if (!response.ok) return null;
-  const data = (await response.json()) as {
+  let data: {
     error?: unknown;
     parse?: { title?: string; wikitext?: { "*"?: string } };
   };
+  try {
+    data = (await response.json()) as typeof data;
+  } catch {
+    return null;
+  }
   const wikitext = data.parse?.wikitext?.["*"];
   if (!wikitext || data.error) return null;
   return { title: data.parse?.title || page, wikitext };
@@ -101,39 +108,58 @@ function fillMissing(
   }
 }
 
-async function lookupWiktionary(
+type WikiLookup = {
+  pos: string;
+  lemma: string;
+  forms: Partial<Record<LangCode, AcceptedAnswer[]>>;
+  /** True when Wiktionary (or a verified rule) rewrote the typed surface. */
+  remapped: boolean;
+};
+
+async function fetchWikiPageVariants(
   query: string,
   source: LangCode,
   fetchImpl: typeof fetch,
-): Promise<{ pos: string; lemma: string; forms: Partial<Record<LangCode, AcceptedAnswer[]>> } | null> {
+  options?: { allowCapitalize?: boolean },
+): Promise<WikiPage | null> {
   let page = await fetchWikiPage(query, fetchImpl);
+  if (page) return page;
+  if (options?.allowCapitalize === false) return null;
   const sourceInfo = languageByCode(source);
-  if (!page && sourceInfo.capitalizeLookup) {
+  if (sourceInfo.capitalizeLookup) {
     const capitalized = query.charAt(0).toLocaleUpperCase(sourceInfo.locale) + query.slice(1);
-    if (normalizeAnswer(capitalized) !== normalizeAnswer(query) || capitalized !== query) {
+    if (capitalized !== query) {
       page = await fetchWikiPage(capitalized, fetchImpl);
+      if (page) return page;
     }
   }
-  if (!page) return null;
-
-  let parsed = parseLangEntry(page.wikitext, source);
-  let lemma = parsed?.formOfLemma || pageLemma(page.title) || query;
-  if (parsed?.formOfLemma && normalizeAnswer(parsed.formOfLemma) !== normalizeAnswer(query)) {
-    const followed = await fetchWikiPage(parsed.formOfLemma, fetchImpl);
-    if (followed) {
-      const followedLemma = parsed.formOfLemma;
-      const next = parseLangEntry(followed.wikitext, source);
-      if (next) {
-        parsed = next;
-        lemma = next.formOfLemma || pageLemma(followed.title) || followedLemma;
-      }
-    }
+  // German nouns are often titled with a capital even when the user typed lower-case.
+  if (source === "de") {
+    const capitalized = query.charAt(0).toLocaleUpperCase("de-DE") + query.slice(1);
+    if (capitalized !== query) page = await fetchWikiPage(capitalized, fetchImpl);
   }
-  if (!parsed) return null;
+  return page;
+}
 
-  const forms = answersFromParse(parsed, source, lemma);
+function enrichTranslations(
+  forms: Partial<Record<LangCode, AcceptedAnswer[]>>,
+  parsed: LangParse,
+  source: LangCode,
+  lemma: string,
+): void {
+  const fromParse = answersFromParse(parsed, source, lemma);
+  for (const code of LANG_CODES) {
+    if (!forms[code]?.length && fromParse[code]?.length) forms[code] = fromParse[code];
+  }
+}
+
+async function fillTranslationGaps(
+  forms: Partial<Record<LangCode, AcceptedAnswer[]>>,
+  source: LangCode,
+  lemma: string,
+  fetchImpl: typeof fetch,
+): Promise<void> {
   const missing = () => LANG_CODES.some((code) => code !== source && !forms[code]?.length);
-
   const pivot = pivotLanguage();
   if (missing()) {
     const subpage = await fetchWikiPage(`${lemma}/translations`, fetchImpl);
@@ -152,8 +178,91 @@ async function lookupWiktionary(
       if (parsedHop) fillMissing(forms, parsedHop.translations, source);
     }
   }
+}
 
-  return { pos: parsed.pos || "word", lemma, forms };
+/**
+ * True when the page looks like a citation lemma for `lang` (not merely another
+ * inflection of a different word). Used to verify rule-based candidates.
+ */
+function isVerifiedLemmaPage(parsed: LangParse | null, candidate: string, lang: LangCode): boolean {
+  if (!parsed) return false;
+  if (parsed.formOfLemma && foldLemmaKey(parsed.formOfLemma, lang) !== foldLemmaKey(candidate, lang)) {
+    return false;
+  }
+  return Boolean(parsed.pos) || parsed.glosses.length > 0 || Object.keys(parsed.translations).length > 0;
+}
+
+async function lookupWiktionary(
+  query: string,
+  source: LangCode,
+  fetchImpl: typeof fetch,
+): Promise<WikiLookup | null> {
+  const page = await fetchWikiPageVariants(query, source, fetchImpl);
+  if (!page) return null;
+
+  let parsed = parseLangEntry(page.wikitext, source);
+  // Citation comes from the form-of / language-head template when present. Do not
+  // replace it with a redirected page title (German capitalizeLookup can land on
+  // Kleine/Klein while the template says klein).
+  let lemma = parsed?.formOfLemma || pageLemma(page.title) || query;
+  const remapped =
+    Boolean(parsed?.formOfLemma) &&
+    foldLemmaKey(parsed!.formOfLemma!, source) !== foldLemmaKey(query, source);
+
+  if (parsed?.formOfLemma && remapped) {
+    const followedLemma = parsed.formOfLemma;
+    lemma = followedLemma;
+    const followed = await fetchWikiPageVariants(followedLemma, source, fetchImpl);
+    if (followed) {
+      const next = parseLangEntry(followed.wikitext, source);
+      // Prefer the lemma page for glosses/translations when it is a real entry.
+      if (next && isVerifiedLemmaPage(next, followedLemma, source)) {
+        parsed = next;
+      }
+    }
+  }
+  if (!parsed) return null;
+
+  const forms = answersFromParse(parsed, source, lemma);
+  await fillTranslationGaps(forms, source, lemma, fetchImpl);
+  return { pos: parsed.pos || "word", lemma, forms, remapped };
+}
+
+/**
+ * Try rule-based lemma candidates, accepting only those verified on Wiktionary
+ * (or that resolve via a form-of page that points at them).
+ */
+async function lookupVerifiedRuleLemma(
+  query: string,
+  source: LangCode,
+  fetchImpl: typeof fetch,
+): Promise<WikiLookup | null> {
+  const candidates = lemmaCandidates(source, query);
+  for (const candidate of candidates) {
+    if (foldLemmaKey(candidate, source) === foldLemmaKey(query, source)) continue;
+    // Exact title only — German capitalizeLookup would turn "kleine" into the
+    // noun "Kleine", which is a different lemma.
+    const page = await fetchWikiPageVariants(candidate, source, fetchImpl, {
+      allowCapitalize: false,
+    });
+    if (!page) continue;
+    // Reject redirects/titles that fold differently from the candidate.
+    if (foldLemmaKey(pageLemma(page.title), source) !== foldLemmaKey(candidate, source)) continue;
+    const parsed = parseLangEntry(page.wikitext, source);
+    if (!isVerifiedLemmaPage(parsed, candidate, source)) continue;
+
+    const lemma =
+      parsed!.formOfLemma && foldLemmaKey(parsed!.formOfLemma, source) === foldLemmaKey(candidate, source)
+        ? parsed!.formOfLemma
+        : candidate;
+    const forms: Partial<Record<LangCode, AcceptedAnswer[]>> = {
+      [source]: [{ text: lemma }],
+    };
+    enrichTranslations(forms, parsed!, source, lemma);
+    await fillTranslationGaps(forms, source, lemma, fetchImpl);
+    return { pos: parsed!.pos || "word", lemma, forms, remapped: true };
+  }
+  return null;
 }
 
 function applyAnswers(
@@ -257,12 +366,20 @@ export async function lookupWord(
 
   let wikiNote = false;
   try {
-    const wiki = await lookupWiktionary(forms[source]?.accepted[0]?.text || lookupQuery, source, fetchImpl);
+    const surfaceForWiki = forms[source]?.accepted[0]?.text || lookupQuery;
+    let wiki = await lookupWiktionary(surfaceForWiki, source, fetchImpl);
+    // When the static map and the form page did not remap, try verified rule candidates
+    // (covers missing pages / network gaps / unparsed templates).
+    if (!lemma && (!wiki || !wiki.remapped)) {
+      const ruled = await lookupVerifiedRuleLemma(query, source, fetchImpl);
+      if (ruled) wiki = ruled;
+    }
     if (wiki) {
       if (!deckHit && wiki.pos) pos = wiki.pos;
-      const wikiChanged = foldLemmaKey(wiki.lemma, source) !== foldLemmaKey(query, source);
+      const wikiChanged =
+        wiki.remapped || foldLemmaKey(wiki.lemma, source) !== foldLemmaKey(query, source);
       if (!deckHit && wikiChanged && !lemma) {
-        // Only Wiktionary may rewrite the source when the static map did not.
+        // Only Wiktionary / verified rules may rewrite when the static map did not.
         // If grammar/morph already canonicalized, keep that lemma and use wiki for translations only.
         const lemmaForm = buildForm([{ text: wiki.lemma }]);
         if (lemmaForm) forms[source] = lemmaForm;

@@ -103,19 +103,106 @@ function firstPos(section: string): string {
   return "";
 }
 
+/** Strip Wiktionary sense ids and Cyrillic stress marks from a citation lemma. */
+export function cleanFormOfLemma(raw: string): string {
+  let lemma = cleanWikiText(raw);
+  // {{pl-head|verb form|robić<id:make>}} → robić
+  lemma = lemma.replace(/<id:[^>]*>/gi, "").trim();
+  // Russian headwords often carry combining acute on Cyrillic vowels only.
+  // Do NOT strip acute from Latin letters (Polish ć/ń/ó/ś/ź, Spanish á, …).
+  lemma = lemma.replace(/([\u0400-\u04FF])\u0301/g, "$1");
+  return lemma.trim();
+}
+
+type FormOfHit = { lemma: string; posHint?: string; source: "head" | "template" | "prose" };
+
+/**
+ * Find the citation lemma an inflected surface points at.
+ *
+ * English Wiktionary uses several patterns depending on the language:
+ * - Polish: `{{pl-head|noun form|humor|…}}` / `{{pl-head|verb form|powtarzać}}`
+ *   (often with no `#` gloss line at all)
+ * - Generic: `{{inflection of|pl|…}}`, `{{infl of|…}}`, `{{plural of|…}}`,
+ *   `{{verb form of|de|gehen|…}}`, `{{noun form of|es|habla|…}}`,
+ *   `{{past participle of|de|machen}}`
+ * - Language-prefixed: `{{de-adj form of|klein}}`, `{{es-verb form of|hablar}}`
+ * - Prose: "genitive singular of [[humor]]"
+ */
 function findFormOf(section: string, lang: LangCode): string | undefined {
-  for (const line of section.split("\n")) {
-    if (!line.startsWith("# ") || line.startsWith("#:")) continue;
-    const match = /\{\{(?:plural of|inflection of|infl of|form of)\|([a-z-]+)\|([^|}]+)/.exec(line);
-    if (!match) {
-      if (line.includes("[[") || line.includes("{{")) return undefined;
-      continue;
-    }
-    if (match[1] !== lang) continue;
-    const lemma = cleanWikiText(match[2]);
-    return lemma || undefined;
+  const hits: FormOfHit[] = [];
+  const seen = new Set<string>();
+
+  const push = (raw: string | undefined, source: FormOfHit["source"], posHint?: string) => {
+    if (!raw) return;
+    const lemma = cleanFormOfLemma(raw);
+    if (!lemma || lemma.includes("{") || lemma.includes(":") || lemma.length > 64) return;
+    const key = `${lemma.toLocaleLowerCase()}\0${posHint ?? ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    hits.push({ lemma, posHint, source });
+  };
+
+  // 1) Language head templates that embed the lemma: {{pl-head|noun form|humor|g=m-in}}
+  const headRe = new RegExp(
+    `\\{\\{${escapeRegExp(lang)}-head\\|(noun form|verb form|adjective form|adj form)\\|([^|}]+)`,
+    "gi",
+  );
+  for (const match of section.matchAll(headRe)) {
+    const kind = match[1].toLowerCase();
+    const posHint = kind.startsWith("verb")
+      ? "verb"
+      : kind.startsWith("adj")
+        ? "adjective"
+        : "noun";
+    push(match[2], "head", posHint);
   }
-  return undefined;
+
+  // 2) Language-prefixed form templates: {{es-verb form of|hablar}}, {{de-adj form of|klein}}
+  const langFormRe = new RegExp(
+    `\\{\\{${escapeRegExp(lang)}-(verb|noun|adj) form of\\|([^|}]+)`,
+    "gi",
+  );
+  for (const match of section.matchAll(langFormRe)) {
+    const kind = match[1].toLowerCase();
+    const posHint = kind === "verb" ? "verb" : kind === "adj" ? "adjective" : "noun";
+    push(match[2], "template", posHint);
+  }
+
+  // 3) Shared form-of / inflection templates with an explicit language code.
+  const sharedNames =
+    "plural of|inflection of|infl of|form of|verb form of|noun form of|adj form of|past participle of|participle of|conjugation of";
+  const sharedRe = new RegExp(`\\{\\{(?:${sharedNames})\\|([a-z-]{2,3})\\|([^|}]+)`, "gi");
+  for (const match of section.matchAll(sharedRe)) {
+    if (match[1].toLowerCase() !== lang) continue;
+    const name = match[0].slice(2).split("|")[0].toLowerCase();
+    const posHint = name.includes("verb")
+      ? "verb"
+      : name.includes("adj")
+        ? "adjective"
+        : name.includes("noun") || name.includes("plural")
+          ? "noun"
+          : name.includes("participle") || name.includes("conjugation")
+            ? "verb"
+            : undefined;
+    push(match[2], "template", posHint);
+  }
+
+  // 4) Prose “X of [[lemma]]” lines (legacy / incomplete entries).
+  const proseRe =
+    /\b(?:(?:first|second|third)[\s-]?person|singular|plural|genitive|dative|accusative|nominative|locative|instrumental|vocative|present|past|preterite|imperative|infinitive|masculine|feminine|neuter|comparative|superlative|participle|conjugated|inflected)\b[^.\n]{0,80}?\bof\s+\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]/gi;
+  for (const match of section.matchAll(proseRe)) {
+    push(match[1], "prose");
+  }
+
+  if (hits.length === 0) return undefined;
+
+  // Prefer a hit that matches the first POS heading when several lemmas appear
+  // (e.g. Spanish "hablas" → noun habla vs verb hablar).
+  const pos = firstPos(section);
+  const matchingPos = pos ? hits.find((hit) => hit.posHint === pos) : undefined;
+  // Prefer head-template lemmas (Polish) over later prose noise.
+  const headHit = hits.find((hit) => hit.source === "head");
+  return (matchingPos ?? headHit ?? hits[0])?.lemma;
 }
 
 function labelContext(line: string): string | undefined {
