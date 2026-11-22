@@ -118,6 +118,7 @@ const EN_PAST: Record<string, string> = {
   sell: "sold",
   tell: "told",
   win: "won",
+  become: "became",
   begin: "began",
   break: "broke",
   choose: "chose",
@@ -299,6 +300,10 @@ export function plPast(lemma: string, gender: Gender, number: GramNumber = "sg")
     pisać: { m: "pisał", f: "pisała", n: "pisało", pl: "pisali" },
     mówić: { m: "mówił", f: "mówiła", n: "mówiło", pl: "mówili" },
     robić: { m: "robił", f: "robiła", n: "robiło", pl: "robili" },
+    myśleć: { m: "myślał", f: "myślała", n: "myślało", pl: "myśleli" },
+    pomyśleć: { m: "pomyślał", f: "pomyślała", n: "pomyślało", pl: "pomyśleli" },
+    leżeć: { m: "leżał", f: "leżała", n: "leżało", pl: "leżeli" },
+    należeć: { m: "należał", f: "należała", n: "należało", pl: "należeli" },
   };
   const w = lemma.toLowerCase();
   const known = irregular[w];
@@ -313,7 +318,22 @@ export function plPast(lemma: string, gender: Gender, number: GramNumber = "sg")
     if (gender === "n") return `${stem}ło`;
     return `${stem}ł`;
   }
-  if (w.endsWith("ać") || w.endsWith("eć") || w.endsWith("ić") || w.endsWith("yć")) {
+  // -ieć → -iał (rozumieć→rozumiał); bare -eć → -ał (myśleć→myślał), not *myśleł.
+  if (w.endsWith("ieć")) {
+    const stem = `${lemma.slice(0, -3)}ia`;
+    if (number === "pl") return `${lemma.slice(0, -3)}ieli`;
+    if (gender === "f") return `${stem}ła`;
+    if (gender === "n") return `${stem}ło`;
+    return `${stem}ł`;
+  }
+  if (w.endsWith("eć")) {
+    const stem = `${lemma.slice(0, -2)}a`;
+    if (number === "pl") return `${lemma.slice(0, -2)}eli`;
+    if (gender === "f") return `${stem}ła`;
+    if (gender === "n") return `${stem}ło`;
+    return `${stem}ł`;
+  }
+  if (w.endsWith("ać") || w.endsWith("ić") || w.endsWith("yć")) {
     const stem = lemma.slice(0, -1);
     if (number === "pl") return `${stem}li`;
     if (gender === "f") return `${stem}ła`;
@@ -323,8 +343,65 @@ export function plPast(lemma: string, gender: Gender, number: GramNumber = "sg")
   return null;
 }
 
-/** Polish future: będzie + infinitive (imperfective analytic). */
-export function plFuture(lemma: string): string {
+/**
+ * Polish future: imperfective analytic (będzie + infinitive).
+ * Perfective verbs use the simple future (present-looking 3sg); when we cannot
+ * form that safely, return null so the generator skips rather than
+ * "*będzie powiedzieć".
+ */
+export function plFuture(lemma: string): string | null {
+  const w = lemma.toLowerCase();
+  // Common perfectives: use 3sg-like simple future instead of będzie + inf.
+  const perfectiveFuture: Record<string, string> = {
+    powiedzieć: "powie",
+    opowiedzieć: "opowie",
+    zobaczyć: "zobaczy",
+    napisać: "napisze",
+    przeczytać: "przeczyta",
+    zrobić: "zrobi",
+    dać: "da",
+    wziąć: "weźmie",
+    kupić: "kupi",
+    znaleźć: "znajdzie",
+    dostać: "dostanie",
+    zostać: "zostanie",
+    przyjść: "przyjdzie",
+    pójść: "pójdzie",
+    przyjechać: "przyjedzie",
+    dotrzeć: "dotrze",
+    zacząć: "zacznie",
+    skończyć: "skończy",
+    zrozumieć: "zrozumie",
+    zapomnieć: "zapomni",
+    spotkać: "spotka",
+    otworzyć: "otworzy",
+    zamknąć: "zamknie",
+    wygrać: "wygra",
+    przegrać: "przegra",
+    stracić: "straci",
+    zabrać: "zabierze",
+    wybrać: "wybierze",
+    położyć: "położy",
+    postawić: "postawi",
+    zostawić: "zostawi",
+    usłyszeć: "usłyszy",
+    spojrzeć: "spojrzy",
+    ukryć: "ukryje",
+    zapytać: "zapyta",
+    nazwać: "nazwie",
+  };
+  if (perfectiveFuture[w]) return perfectiveFuture[w]!;
+  // Heuristic: many -ić/-eć/-ąć perfectives without -ować look wrong with będzie.
+  // Prefer skipping unknown perfective-looking forms over inventing będzie + inf.
+  if (
+    (w.endsWith("ić") || w.endsWith("eć") || w.endsWith("ąć") || w.endsWith("ąć")) &&
+    !w.endsWith("ować") &&
+    !w.endsWith("ywać") &&
+    !w.endsWith("awać") &&
+    /^(z|za|prze|przy|wy|po|na|u|od|roz|do|s|ś)/.test(w)
+  ) {
+    return null;
+  }
   return `będzie ${lemma}`;
 }
 
@@ -396,10 +473,34 @@ export function dePastParticiple(lemma: string): string | null {
     helfen: "geholfen",
     laufen: "gelaufen",
     fahren: "gefahren",
+    erreichen: "erreicht",
+    bekommen: "bekommen",
+    verstehen: "verstanden",
+    verlassen: "verlassen",
+    vergessen: "vergessen",
+    beginnen: "begonnen",
+    gewinnen: "gewonnen",
+    verlieren: "verloren",
+    entscheiden: "entschieden",
+    erscheinen: "erschienen",
+    erzählen: "erzählt",
+    erklären: "erklärt",
+    versuchen: "versucht",
+    verkaufen: "verkauft",
+    besuchen: "besucht",
+    bezahlen: "bezahlt",
+    gehören: "gehört",
+    gefallen: "gefallen",
   };
   const w = lemma.toLowerCase();
   if (irregular[w]) return irregular[w]!;
-  if (w.endsWith("ieren")) return `ge${w.slice(0, -2)}t`;
+  // Inseparable prefixes never take ge- (erreichen → erreicht, not *geerreicht).
+  if (/^(be|emp|ent|er|ge|miss|ver|zer|hinter|wider)/.test(w)) {
+    if (w.endsWith("en")) return `${w.slice(0, -2)}t`;
+    if (w.endsWith("eln") || w.endsWith("ern")) return `${w}t`;
+    return `${w}t`;
+  }
+  if (w.endsWith("ieren")) return `${w.slice(0, -2)}t`;
   if (w.endsWith("en")) return `ge${w.slice(0, -2)}t`;
   return null;
 }
@@ -525,7 +626,10 @@ export function finiteVerb(
   // future
   if (surface.future) return { form: surface.future, alts };
   if (lang === "en" && lemma) return { form: enFuture(lemma), alts };
-  if (lang === "pl" && lemma) return { form: plFuture(lemma), alts };
+  if (lang === "pl" && lemma) {
+    const future = plFuture(lemma);
+    return future ? { form: future, alts } : null;
+  }
   if (lang === "de" && lemma) return { form: deFuture(lemma), alts };
   if (lang === "zh" && lemma) return { form: `会${lemma}`, alts };
   return null;

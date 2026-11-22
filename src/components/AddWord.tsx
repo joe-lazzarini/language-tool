@@ -1,6 +1,8 @@
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SpecialKeys } from "./SpecialKeys";
+import { findDraftDuplicate, type DuplicateHit } from "../lib/duplicates";
 import { finalizeLanguage } from "../lib/forms";
+import { formCitation, indexDeckCitations, loadLemmaIndex, type LemmaIndex } from "../lib/lemma";
 import {
   canonicalPair,
   LANG_CODES,
@@ -11,9 +13,9 @@ import {
   pairNames,
   SPECIAL_LETTERS,
 } from "../lib/languages";
-import { createCustomWord } from "../lib/customWords";
-import { lookupWord, type LookupDraft } from "../lib/translate";
-import type { AcceptedAnswer, CustomWord, Entry, LangCode } from "../types";
+import { createCustomWord, type CustomWord } from "../lib/customWords";
+import { lookupWord, type LemmaChoice, type LookupDraft } from "../lib/translate";
+import type { AcceptedAnswer, Entry, LangCode } from "../types";
 
 const POS_OPTIONS = [
   "noun",
@@ -67,20 +69,24 @@ export function AddWord({
   from,
   to,
   initial,
+  customWords = [],
   onSave,
   onCancel,
   onViewList,
   onQuizMyWords,
+  onOpenExisting,
   lookup = lookupWord,
 }: {
   deck: Entry[];
   from: LangCode;
   to: LangCode;
   initial?: CustomWord | null;
+  customWords?: CustomWord[];
   onSave: (word: CustomWord) => Promise<void> | void;
   onCancel: () => void;
   onViewList?: () => void;
   onQuizMyWords?: (word: CustomWord) => void;
+  onOpenExisting?: (hit: DuplicateHit) => void;
   lookup?: typeof lookupWord;
 }) {
   const editing = Boolean(initial);
@@ -95,15 +101,47 @@ export function AddWord({
   const [pos, setPos] = useState(initial?.pos || "noun");
   const [forms, setForms] = useState<DraftForms>(() => (initial ? fromWord(initial) : emptyForms()));
   const [notes, setNotes] = useState<string[]>([]);
+  const [lemma, setLemma] = useState<LemmaChoice | null>(null);
   const [looking, setLooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedWord, setSavedWord] = useState<CustomWord | null>(null);
   const [revealed, setRevealed] = useState(editing);
+  const [lemmaIndex, setLemmaIndex] = useState<LemmaIndex | null>(null);
   const queryRef = useRef<HTMLInputElement>(null);
   const focusRef = useRef<HTMLInputElement | null>(null);
 
   const posOptions = POS_OPTIONS.includes(pos) ? POS_OPTIONS : [pos, ...POS_OPTIONS];
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadLemmaIndex()
+      .then((index) => {
+        if (cancelled) return;
+        indexDeckCitations(index, deck);
+        setLemmaIndex(index);
+      })
+      .catch(() => {
+        if (!cancelled) setLemmaIndex(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deck]);
+
+  const duplicate = useMemo(() => {
+    if (!revealed || !pair || editing) return null;
+    return findDraftDuplicate({
+      forms,
+      pos,
+      pair,
+      source,
+      customWords,
+      deck,
+      excludeId: initial?.id,
+      lemmaIndex,
+    });
+  }, [revealed, pair, editing, forms, pos, source, customWords, deck, initial?.id, lemmaIndex]);
 
   function insertAt(field: HTMLInputElement | null, letter: string, apply: (next: string) => void) {
     if (!field) {
@@ -127,11 +165,13 @@ export function AddWord({
     if (!trimmed || looking) return;
     setLooking(true);
     setError(null);
+    setLemma(null);
     try {
       const draft = await lookup(trimmed, source, deck, fetch, fieldOrder);
       setForms(fromLookup(draft));
       setPos(draft.pos || "word");
       setNotes(draft.notes);
+      setLemma(draft.lemma ?? null);
       setRevealed(true);
     } catch {
       setError("The lookup failed. Fill in the translations yourself.");
@@ -140,9 +180,24 @@ export function AddWord({
         ...current,
         [source]: { text: trimmed, accepted: [{ text: trimmed }] },
       }));
+      setLemma(null);
     } finally {
       setLooking(false);
     }
+  }
+
+  function keepOriginal() {
+    if (!lemma) return;
+    const original = lemma.original;
+    setForms((current) => ({
+      ...current,
+      [source]: { text: original, accepted: [{ text: original }] },
+    }));
+    setNotes((current) => [
+      ...current.filter((note) => !note.startsWith("Saved as")),
+      `Keeping “${original}” instead of “${lemma.canonical}”.`,
+    ]);
+    setLemma(null);
   }
 
   function updateText(code: LangCode, text: string) {
@@ -179,6 +234,14 @@ export function AddWord({
     setError(null);
     if (!pair) {
       setError("Choose two different languages before saving.");
+      return;
+    }
+    if (duplicate) {
+      setError(
+        duplicate.kind === "custom"
+          ? `“${duplicate.display}” is already in your words`
+          : `“${duplicate.display}” is already in the built-in deck`,
+      );
       return;
     }
     const nextForms: CustomWord["forms"] = {};
@@ -240,6 +303,7 @@ export function AddWord({
                 setQuery("");
                 setForms(emptyForms());
                 setNotes([]);
+                setLemma(null);
                 setRevealed(false);
                 setPos("noun");
                 setError(null);
@@ -253,6 +317,12 @@ export function AddWord({
     );
   }
 
+  const duplicateMessage = duplicate
+    ? duplicate.kind === "custom"
+      ? `“${duplicate.display}” is already in your words`
+      : `“${duplicate.display}” is already in the built-in deck`
+    : null;
+
   return (
     <div className="stack">
       <header className="hero compact">
@@ -260,8 +330,8 @@ export function AddWord({
         <h1>{editing ? "Edit word" : "Add a word"}</h1>
         <p className="lede">
           Saved for {pairNames(from, to)} only. The other direction uses the same words. Type a word in
-          one of these languages. The other is filled from the built-in deck, then Wiktionary, then
-          MyMemory. Check it, then save.
+          one of these languages. Inflected forms become dictionary lemmas when known, then the other
+          side is filled from the built-in deck, Wiktionary, and MyMemory. Check it, then save.
         </p>
       </header>
 
@@ -323,11 +393,38 @@ export function AddWord({
 
       {revealed && (
         <section className="panel">
-          {notes.map((note) => (
-            <p key={note} className="hint">
-              {note}
-            </p>
-          ))}
+          {lemma && (
+            <div className="note lemma-note">
+              <p className="hint" style={{ margin: 0 }}>
+                Saved as “{lemma.canonical}” (from “{lemma.original}”)
+              </p>
+              <button type="button" className="secondary slim" onClick={keepOriginal}>
+                Keep “{lemma.original}” instead
+              </button>
+            </div>
+          )}
+          {notes
+            .filter((note) => !note.startsWith("Saved as"))
+            .map((note) => (
+              <p key={note} className="hint">
+                {note}
+              </p>
+            ))}
+          {duplicateMessage && (
+            <div className="banner" role="status">
+              <p style={{ margin: 0 }}>{duplicateMessage}</p>
+              {onOpenExisting ? (
+                <button
+                  type="button"
+                  className="secondary slim"
+                  style={{ marginTop: 8 }}
+                  onClick={() => onOpenExisting(duplicate!)}
+                >
+                  {duplicate?.kind === "custom" ? "Quiz this word" : "Study this card"}
+                </button>
+              ) : null}
+            </div>
+          )}
           <div className="field">
             <label className="label" htmlFor="word-pos">
               Part of speech
@@ -425,7 +522,12 @@ export function AddWord({
           ))}
           {error && <p className="banner">{error}</p>}
           <div className="actions">
-            <button type="button" className="primary" onClick={() => void save()} disabled={saving}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void save()}
+              disabled={saving || Boolean(duplicate)}
+            >
               {saving ? "Saving…" : "Save card"}
             </button>
             <button type="button" className="secondary" onClick={onCancel}>
@@ -442,4 +544,16 @@ export function AddWord({
       )}
     </div>
   );
+}
+
+/** Exported for tests that assert the review copy. */
+export function lemmaReviewLabel(choice: LemmaChoice): string {
+  return `Saved as “${choice.canonical}” (from “${choice.original}”)`;
+}
+
+export function duplicateBannerText(hit: DuplicateHit): string {
+  const label = hit.display || formCitation(hit.word?.forms[hit.lang] ?? hit.entry?.forms[hit.lang]);
+  return hit.kind === "custom"
+    ? `“${label}” is already in your words`
+    : `“${label}” is already in the built-in deck`;
 }

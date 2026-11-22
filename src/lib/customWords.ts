@@ -1,5 +1,6 @@
 import { canonicalPair, LANG_CODES, sameLanguagePair, type LangPair } from "./languages";
 import { cloneForm } from "./forms";
+import { duplicateContentKey } from "./lemma";
 import { normalizeAnswer } from "./match";
 import type { AcceptedAnswer, CustomWord, Entry, Form, LangCode } from "../types";
 
@@ -229,6 +230,9 @@ export function upsertWord(words: CustomWord[], word: CustomWord): CustomWord[] 
  * Merge this device's words into an account snapshot.
  * The account wins when it is newer. A local deletion (tombstone) wins over both.
  * Same citation forms under a different id are not uploaded again.
+ * Soft duplicates (same pair + POS + folded citations, e.g. Dom vs dom from
+ * two devices) are collapsed to one card; the remote / older id is kept and
+ * the extra remote id is removed when both already live on the account.
  */
 export function planSync(local: WordStore, remote: CustomWord[]): SyncPlan {
   const tombstones = new Set(local.tombstones.filter(Boolean));
@@ -243,6 +247,12 @@ export function planSync(local: WordStore, remote: CustomWord[]): SyncPlan {
   const removeRemoteIds = [...tombstones].filter((id) => remote.some((word) => word.id === id));
   const remoteKept = remoteNorm.words;
   const remoteSigs = new Set(remoteKept.map((word) => wordSignature(word)));
+  const remoteContent = new Map<string, CustomWord>();
+  for (const word of remoteKept) {
+    const key = duplicateContentKey(word);
+    if (!key || remoteContent.has(key)) continue;
+    remoteContent.set(key, word);
+  }
 
   const upload: CustomWord[] = [];
   const queued = new Set<string>();
@@ -264,6 +274,8 @@ export function planSync(local: WordStore, remote: CustomWord[]): SyncPlan {
     const seenAt = known[word.id];
     if (seenAt && word.updatedAt <= seenAt && !migratedRemote.has(word.id)) continue;
     if (remoteSigs.has(wordSignature(word))) continue;
+    const content = duplicateContentKey(word);
+    if (content && remoteContent.has(content)) continue;
     queue(word);
   }
 
@@ -279,15 +291,31 @@ export function planSync(local: WordStore, remote: CustomWord[]): SyncPlan {
     if (!current || word.updatedAt >= current.updatedAt) nextById.set(word.id, word);
   }
 
-  const seen = new Set<string>();
+  const seenSig = new Set<string>();
+  const seenContent = new Set<string>();
   const nextWords: CustomWord[] = [];
-  for (const word of nextById.values()) {
+  const ranked = [...nextById.values()].sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+  );
+  for (const word of ranked) {
     const signature = wordSignature(word);
-    if (seen.has(signature)) continue;
-    seen.add(signature);
+    if (seenSig.has(signature)) {
+      if (word.pair && remoteById.has(word.id) && !tombstones.has(word.id)) {
+        removeRemoteIds.push(word.id);
+      }
+      continue;
+    }
+    const content = duplicateContentKey(word);
+    if (content && seenContent.has(content)) {
+      if (word.pair && remoteById.has(word.id) && !tombstones.has(word.id)) {
+        removeRemoteIds.push(word.id);
+      }
+      continue;
+    }
+    seenSig.add(signature);
+    if (content) seenContent.add(content);
     nextWords.push(word);
   }
-  nextWords.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 
   // A legacy account card is expanded in memory. Write every resulting pair
   // back, including copies that existed only on the account.
@@ -303,9 +331,9 @@ export function planSync(local: WordStore, remote: CustomWord[]): SyncPlan {
 
   return {
     upload,
-    removeRemoteIds,
+    removeRemoteIds: [...new Set(removeRemoteIds)],
     nextWords,
-    pendingTombstones: removeRemoteIds,
+    pendingTombstones: [...new Set(removeRemoteIds)],
     accountRevision,
   };
 }

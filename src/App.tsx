@@ -39,16 +39,24 @@ import {
   startActionLabel,
   type OtherPairWords,
 } from "./lib/practiceSetup";
-import { focusHint, selectCards, weakCount } from "./accuracy/stats";
+import {
+  focusHint,
+  isNoveltyBias,
+  NOVELTY_BIAS_OPTIONS,
+  noveltyBiasHint,
+  selectCards,
+  weakCount,
+} from "./accuracy/stats";
 import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "./lib/ime";
 import { isCorrectAnswer } from "./lib/match";
+import { canAdvanceAfterReveal, mustConfirmRetype } from "./lib/retypeGate";
 import { scoreSummary } from "./lib/sessionResults";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
 import { useSentenceStatus } from "./sentence/useSentenceStatus";
-import type { CardResult, Catalog, Entry, Focus, LangCode, LangPack, Mode, Settings } from "./types";
+import type { CardResult, Catalog, Entry, Focus, LangCode, LangPack, Mode, NoveltyBias, Settings } from "./types";
 
 const STORAGE_KEY = "slowka-settings-v2";
 const LEGACY_STORAGE_KEY = "slowka-settings-v1";
@@ -60,6 +68,14 @@ const defaultSettings: Settings = {
   range: "top100",
   size: 10,
   focus: "all",
+  noveltyBias: "medium",
+};
+
+const NOVELTY_BIAS_LABELS: Record<NoveltyBias, string> = {
+  off: "Off",
+  light: "Light",
+  medium: "Medium",
+  strong: "Strong",
 };
 
 function migrateLegacy(raw: string): Partial<Settings> | null {
@@ -84,6 +100,9 @@ function loadSettings(): Settings {
     const to = parsed.to && isLangCode(parsed.to) ? parsed.to : defaultSettings.to;
     const range = parsed.range && RANGES.some((item) => item.id === parsed.range) ? parsed.range : defaultSettings.range;
     const focus: Focus = parsed.focus === "weak" ? "weak" : "all";
+    const noveltyBias: NoveltyBias = isNoveltyBias(parsed.noveltyBias)
+      ? parsed.noveltyBias
+      : defaultSettings.noveltyBias;
     return {
       ...defaultSettings,
       ...parsed,
@@ -91,6 +110,7 @@ function loadSettings(): Settings {
       to: to === from ? otherLanguage(from) : to,
       range,
       focus,
+      noveltyBias,
     };
   } catch {
     return defaultSettings;
@@ -279,6 +299,23 @@ export function Home({
           <p className="hint">{focusHint(settings.focus, weakInBand)}</p>
         </div>
 
+        <div className="field">
+          <span className="label">Newer words</span>
+          <div className="segment" role="group" aria-label="Newer words bias">
+            {NOVELTY_BIAS_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={settings.noveltyBias === value ? "on" : ""}
+                onClick={() => setSettings({ ...settings, noveltyBias: value })}
+              >
+                {NOVELTY_BIAS_LABELS[value]}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{noveltyBiasHint(settings.noveltyBias, settings.focus)}</p>
+        </div>
+
         <div className="pair-grid">
           <LanguagePicker label="Prompt" value={settings.from} onChange={setFrom} />
           <div className="pair-swap">
@@ -403,6 +440,8 @@ export function Session({
   const [input, setInput] = useState("");
   const [revealed, setRevealed] = useState(false);
   const [correct, setCorrect] = useState<boolean | null>(null);
+  const [retypeConfirmed, setRetypeConfirmed] = useState(false);
+  const [retypeHint, setRetypeHint] = useState<string | null>(null);
   const [results, setResults] = useState<CardResult[]>([]);
   const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -418,14 +457,17 @@ export function Session({
   const prompt = word ? promptFor(word, from) : "";
   const expected = word ? expectedFor(word, to) : "";
   const specials = SPECIAL_LETTERS[to] ?? [];
+  const awaitingRetype = mustConfirmRetype(revealed, correct, retypeConfirmed);
+  const canAdvance = canAdvanceAfterReveal(revealed, correct, retypeConfirmed);
 
   useEffect(() => {
+    if (done) return;
+    if (canAdvance) {
+      inputRef.current?.blur();
+      return;
+    }
     inputRef.current?.focus();
-  }, [index, done]);
-
-  useEffect(() => {
-    if (revealed) inputRef.current?.blur();
-  }, [revealed]);
+  }, [index, done, canAdvance, awaitingRetype]);
 
   function commitResult(entry: Entry, ok: boolean, given: string) {
     const row: CardResult = { word: entry, correct: ok, given };
@@ -435,6 +477,7 @@ export function Session({
   }
 
   function insertLetter(letter: string) {
+    if (canAdvance) return;
     const field = inputRef.current;
     if (!field) {
       setInput((value) => value + letter);
@@ -451,12 +494,23 @@ export function Session({
     });
   }
 
+  function beginMissRetype() {
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
+    setInput("");
+  }
+
   function check(given = input) {
     if (!word || revealed || shouldBlockGradeOrAdvance(composingRef.current)) return;
     const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
     setCorrect(ok);
     setRevealed(true);
     commitResult(word, ok, given.trim());
+    if (!ok) beginMissRetype();
+    else {
+      setRetypeConfirmed(false);
+      setRetypeHint(null);
+    }
   }
 
   function reveal() {
@@ -465,6 +519,22 @@ export function Session({
     setCorrect(mode === "quiz" ? false : null);
     setRevealed(true);
     commitResult(word, false, input.trim());
+    beginMissRetype();
+  }
+
+  function confirmRetype(given = input) {
+    if (!word || !awaitingRetype || shouldBlockGradeOrAdvance(composingRef.current)) return;
+    if (!given.trim()) return;
+    const ok = isCorrectAnswer(given, expected, acceptedFor(word, to), to);
+    if (!ok) {
+      setRetypeHint("Not quite — type one of the answers above.");
+      // Confirm was likely tapped; restore focus so the mobile keyboard stays up.
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    // Retype only unlocks advance; the miss already recorded stays a miss.
+    setRetypeConfirmed(true);
+    setRetypeHint(null);
   }
 
   function finish() {
@@ -473,6 +543,7 @@ export function Session({
   }
 
   function next() {
+    if (!canAdvanceAfterReveal(revealed, correct, retypeConfirmed)) return;
     if (indexRef.current + 1 >= total) {
       finish();
       return;
@@ -482,6 +553,8 @@ export function Session({
     setInput("");
     setRevealed(false);
     setCorrect(null);
+    setRetypeConfirmed(false);
+    setRetypeHint(null);
   }
 
   function requestExit() {
@@ -503,7 +576,9 @@ export function Session({
       const result = applyAdvanceKey(heldKeys.current, {
         key: event.key,
         repeat: event.repeat,
-        revealed,
+        // Treat unconfirmed misses as not-yet-revealed for advance shortcuts,
+        // so Space cannot skip the required retype.
+        revealed: canAdvance,
         composing,
         altKey: event.altKey,
         ctrlKey: event.ctrlKey,
@@ -525,7 +600,7 @@ export function Session({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [revealed, done]);
+  }, [canAdvance, done]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -533,6 +608,10 @@ export function Session({
     if (!revealed) {
       if (!input.trim()) return;
       check();
+      return;
+    }
+    if (awaitingRetype) {
+      confirmRetype();
       return;
     }
     next();
@@ -620,13 +699,16 @@ export function Session({
 
       <form className="answer" onSubmit={onSubmit}>
         <label className="sr" htmlFor="answer">
-          Your translation
+          {awaitingRetype ? "Retype the correct answer" : "Your translation"}
         </label>
         <input
           id="answer"
           ref={inputRef}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            setInput(event.target.value);
+            if (retypeHint) setRetypeHint(null);
+          }}
           onCompositionStart={() => {
             composingRef.current = true;
           }}
@@ -643,14 +725,17 @@ export function Session({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          enterKeyHint={revealed ? "go" : "done"}
+          enterKeyHint={canAdvance ? "go" : "done"}
           lang={languageByCode(to).locale}
-          placeholder={answerPlaceholder(to)}
-          disabled={revealed}
+          placeholder={awaitingRetype ? "Type the correct answer" : answerPlaceholder(to)}
+          disabled={canAdvance}
+          aria-invalid={retypeHint ? true : undefined}
         />
-        {languageByCode(to).answerHint ? <p className="hint">{languageByCode(to).answerHint}</p> : null}
+        {languageByCode(to).answerHint && !canAdvance ? (
+          <p className="hint">{languageByCode(to).answerHint}</p>
+        ) : null}
         <SpecialKeys
-          letters={!revealed ? specials : []}
+          letters={!canAdvance ? specials : []}
           label={`${languageName(to)} letters`}
           onInsert={insertLetter}
         />
@@ -664,6 +749,18 @@ export function Session({
                 {mode === "quiz" ? "Skip" : "Reveal"}
               </button>
             </>
+          ) : awaitingRetype ? (
+            <div className="next-row">
+              <button type="submit" className="primary" disabled={!input.trim()}>
+                Confirm
+              </button>
+              <p className="hint retype-hint">Type the correct answer to continue</p>
+              {retypeHint ? (
+                <p className="bad-text retype-feedback" role="status">
+                  {retypeHint}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="next-row">
               <button type="submit" className="primary">
@@ -836,6 +933,18 @@ export function App() {
     [rangeBand, accuracy.read, accuracy.revision, deferredFrom, deferredTo],
   );
 
+  /** Reverse-direction stats only matter for All-focus novelty weighting. */
+  function selectOptionsFor(next: Settings) {
+    const noveltyBias = next.noveltyBias;
+    if (next.focus === "weak" || noveltyBias === "off") {
+      return { noveltyBias };
+    }
+    return {
+      noveltyBias,
+      reverseStats: accuracy.read(next.to, next.from),
+    };
+  }
+
   function start() {
     const band = wordsForRange(
       entriesForPair(
@@ -845,7 +954,10 @@ export function App() {
       ),
       settings.range,
     );
-    setSession(selectCards(band, accuracy.read(settings.from, settings.to), settings.focus, settings.size));
+    const forward = accuracy.read(settings.from, settings.to);
+    setSession(
+      selectCards(band, forward, settings.focus, settings.size, Math.random, selectOptionsFor(settings)),
+    );
   }
 
   /** Quiz only the user's words for the current pair (Weak focus still applies). */
@@ -861,7 +973,10 @@ export function App() {
       setScreen("home");
       return;
     }
-    setSession(selectCards(band, accuracy.read(settings.from, settings.to), next.focus, next.size));
+    const forward = accuracy.read(settings.from, settings.to);
+    setSession(
+      selectCards(band, forward, next.focus, next.size, Math.random, selectOptionsFor(next)),
+    );
     setScreen("home");
   }
 
@@ -921,6 +1036,7 @@ export function App() {
             from={settings.from}
             to={settings.to}
             initial={editing}
+            customWords={pairWords}
             onCancel={() => {
               setEditing(null);
               setScreen(editing ? "list" : "home");
@@ -931,6 +1047,20 @@ export function App() {
             }}
             onViewList={() => setScreen("list")}
             onQuizMyWords={(word) => quizMyWords(word)}
+            onOpenExisting={(hit) => {
+              if (hit.kind === "custom" && hit.word) {
+                quizMyWords(hit.word);
+                return;
+              }
+              if (hit.entry) {
+                const next: Settings = { ...settings, mode: "quiz", range: settings.range };
+                setSettings(next);
+                setSession(
+                  selectCards([hit.entry], accuracy.read(settings.from, settings.to), next.focus, 10),
+                );
+                setScreen("home");
+              }
+            }}
           />
         )}
         {!session && screen === "list" && (
