@@ -1,10 +1,27 @@
-import type { SessionSize } from "../types";
+import type { NoveltyBias, SessionSize } from "../types";
 
 /** Newest result is the low bit. 1 is correct. */
 export const RECENT_WINDOW = 8;
 export const KNOWN_TAIL = 2;
 export const WEAK_ACCURACY = 0.6;
 export const STAT_CAP = 1500;
+
+/**
+ * Exponent k in weight = 1 / (1 + attempts)^k for All-focus novelty bias.
+ * Off (k=0) yields uniform weights; Strong (k=2) heavily favors unseen words.
+ */
+export const NOVELTY_BIAS_EXPONENTS: Record<NoveltyBias, number> = {
+  off: 0,
+  light: 0.5,
+  medium: 1,
+  strong: 2,
+};
+
+export const NOVELTY_BIAS_OPTIONS: readonly NoveltyBias[] = ["off", "light", "medium", "strong"];
+
+export function isNoveltyBias(value: unknown): value is NoveltyBias {
+  return value === "off" || value === "light" || value === "medium" || value === "strong";
+}
 
 export type WordStat = {
   correct: number;
@@ -313,10 +330,89 @@ function shuffle<T>(items: readonly T[], rng: () => number): T[] {
   return copy;
 }
 
+/** Lifetime attempts for the unordered pair (A→B + B→A), matching known-pair scoring. */
+export function pairAttempts(
+  forward: WordStat | undefined,
+  reverse: WordStat | undefined,
+): number {
+  return combinePairStat(forward, reverse)?.attempts ?? 0;
+}
+
+/**
+ * Sampling weight for All-focus novelty bias.
+ * weight = 1 / (1 + attempts)^k with k from NOVELTY_BIAS_EXPONENTS.
+ */
+export function noveltyWeight(attempts: number, bias: NoveltyBias): number {
+  const k = NOVELTY_BIAS_EXPONENTS[bias];
+  if (k === 0) return 1;
+  const safe = Math.max(0, attempts);
+  return 1 / (1 + safe) ** k;
+}
+
+export function noveltyBiasHint(bias: NoveltyBias, focus: "all" | "weak"): string {
+  if (focus === "weak") {
+    return "Newer-word bias applies only when Focus is All. Weak words keep their own order.";
+  }
+  if (bias === "off") return "Each card in the band is equally likely.";
+  if (bias === "light") return "Slightly favors words you have practiced less (both directions combined).";
+  if (bias === "medium") return "Prefers less-practiced words; heavily practiced ones still appear.";
+  return "Strongly favors new and rarely practiced words; practiced ones can still show up.";
+}
+
+/**
+ * Weighted random sample without replacement. Zero-weight rows fall back to a
+ * uniform draw among remaining items when the total weight is zero.
+ */
+export function weightedSampleWithoutReplacement<T>(
+  items: readonly T[],
+  weights: readonly number[],
+  limit: number,
+  rng: () => number,
+): T[] {
+  const remaining = items.map((item, index) => ({
+    item,
+    weight: Math.max(0, weights[index] ?? 0),
+  }));
+  const picked: T[] = [];
+  const n = Math.min(Math.max(0, limit), remaining.length);
+  for (let pick = 0; pick < n; pick += 1) {
+    let total = 0;
+    for (const entry of remaining) total += entry.weight;
+    let index = remaining.length - 1;
+    if (total <= 0) {
+      index = Math.min(remaining.length - 1, Math.max(0, Math.floor(rng() * remaining.length)));
+    } else {
+      let target = rng() * total;
+      for (let i = 0; i < remaining.length; i += 1) {
+        target -= remaining[i]!.weight;
+        if (target < 0) {
+          index = i;
+          break;
+        }
+      }
+    }
+    const [chosen] = remaining.splice(index, 1);
+    if (chosen) picked.push(chosen.item);
+  }
+  return picked;
+}
+
+export type SelectCardsOptions = {
+  /** Prefer less-practiced words when Focus is All. Default off (uniform). */
+  noveltyBias?: NoveltyBias;
+  /**
+   * Opposite-direction stats for the same unordered pair. Used with `stats`
+   * via combinePairStat so practice count matches pair-level known scoring.
+   */
+  reverseStats?: ReadonlyMap<string, WordStat>;
+};
+
 /**
  * All shuffles the band and cuts it to the round size, the same shape as a
- * normal session. Weak prefers low-accuracy cards and fills a short round
- * when there are not enough of them. With no history it uses the whole band.
+ * normal session. With noveltyBias other than off, All uses weighted sampling
+ * by combined pair attempts instead of a uniform shuffle. Weak prefers
+ * low-accuracy cards and fills a short round when there are not enough of
+ * them. With no history it uses the whole band. Weak ignores noveltyBias.
  */
 export function selectCards<T extends { id: string }>(
   pool: readonly T[],
@@ -324,9 +420,18 @@ export function selectCards<T extends { id: string }>(
   focus: "all" | "weak",
   size: SessionSize,
   rng: () => number = Math.random,
+  options?: SelectCardsOptions,
 ): T[] {
   const limit = size === "all" ? pool.length : Math.max(0, size);
-  if (focus !== "weak") return shuffle(pool, rng).slice(0, limit);
+  if (focus !== "weak") {
+    const bias = options?.noveltyBias ?? "off";
+    if (bias === "off") return shuffle(pool, rng).slice(0, limit);
+    const reverse = options?.reverseStats;
+    const weights = pool.map((card) =>
+      noveltyWeight(pairAttempts(stats.get(card.id), reverse?.get(card.id)), bias),
+    );
+    return weightedSampleWithoutReplacement(pool, weights, limit, rng);
+  }
 
   const weak: T[] = [];
   const unseen: T[] = [];

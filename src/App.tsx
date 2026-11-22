@@ -39,7 +39,14 @@ import {
   startActionLabel,
   type OtherPairWords,
 } from "./lib/practiceSetup";
-import { focusHint, selectCards, weakCount } from "./accuracy/stats";
+import {
+  focusHint,
+  isNoveltyBias,
+  NOVELTY_BIAS_OPTIONS,
+  noveltyBiasHint,
+  selectCards,
+  weakCount,
+} from "./accuracy/stats";
 import { useAccuracy } from "./accuracy/useAccuracy";
 import { applyAdvanceKey, keyTargetKind, releaseAdvanceKey, type AdvanceKeyHold } from "./lib/advanceKey";
 import { isComposingKeyEvent, shouldBlockGradeOrAdvance } from "./lib/ime";
@@ -48,7 +55,7 @@ import { scoreSummary } from "./lib/sessionResults";
 import { SentenceCard } from "./sentence/SentenceCard";
 import { SentenceQuiz } from "./sentence/SentenceQuiz";
 import { useSentenceStatus } from "./sentence/useSentenceStatus";
-import type { CardResult, Catalog, Entry, Focus, LangCode, LangPack, Mode, Settings } from "./types";
+import type { CardResult, Catalog, Entry, Focus, LangCode, LangPack, Mode, NoveltyBias, Settings } from "./types";
 
 const STORAGE_KEY = "slowka-settings-v2";
 const LEGACY_STORAGE_KEY = "slowka-settings-v1";
@@ -60,6 +67,14 @@ const defaultSettings: Settings = {
   range: "top100",
   size: 10,
   focus: "all",
+  noveltyBias: "medium",
+};
+
+const NOVELTY_BIAS_LABELS: Record<NoveltyBias, string> = {
+  off: "Off",
+  light: "Light",
+  medium: "Medium",
+  strong: "Strong",
 };
 
 function migrateLegacy(raw: string): Partial<Settings> | null {
@@ -84,6 +99,9 @@ function loadSettings(): Settings {
     const to = parsed.to && isLangCode(parsed.to) ? parsed.to : defaultSettings.to;
     const range = parsed.range && RANGES.some((item) => item.id === parsed.range) ? parsed.range : defaultSettings.range;
     const focus: Focus = parsed.focus === "weak" ? "weak" : "all";
+    const noveltyBias: NoveltyBias = isNoveltyBias(parsed.noveltyBias)
+      ? parsed.noveltyBias
+      : defaultSettings.noveltyBias;
     return {
       ...defaultSettings,
       ...parsed,
@@ -91,6 +109,7 @@ function loadSettings(): Settings {
       to: to === from ? otherLanguage(from) : to,
       range,
       focus,
+      noveltyBias,
     };
   } catch {
     return defaultSettings;
@@ -277,6 +296,23 @@ export function Home({
             ))}
           </div>
           <p className="hint">{focusHint(settings.focus, weakInBand)}</p>
+        </div>
+
+        <div className="field">
+          <span className="label">Newer words</span>
+          <div className="segment" role="group" aria-label="Newer words bias">
+            {NOVELTY_BIAS_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={settings.noveltyBias === value ? "on" : ""}
+                onClick={() => setSettings({ ...settings, noveltyBias: value })}
+              >
+                {NOVELTY_BIAS_LABELS[value]}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{noveltyBiasHint(settings.noveltyBias, settings.focus)}</p>
         </div>
 
         <div className="pair-grid">
@@ -845,7 +881,14 @@ export function App() {
       ),
       settings.range,
     );
-    setSession(selectCards(band, accuracy.read(settings.from, settings.to), settings.focus, settings.size));
+    const forward = accuracy.read(settings.from, settings.to);
+    const reverse = accuracy.read(settings.to, settings.from);
+    setSession(
+      selectCards(band, forward, settings.focus, settings.size, Math.random, {
+        noveltyBias: settings.noveltyBias,
+        reverseStats: reverse,
+      }),
+    );
   }
 
   /** Quiz only the user's words for the current pair (Weak focus still applies). */
@@ -861,7 +904,14 @@ export function App() {
       setScreen("home");
       return;
     }
-    setSession(selectCards(band, accuracy.read(settings.from, settings.to), next.focus, next.size));
+    const forward = accuracy.read(settings.from, settings.to);
+    const reverse = accuracy.read(settings.to, settings.from);
+    setSession(
+      selectCards(band, forward, next.focus, next.size, Math.random, {
+        noveltyBias: next.noveltyBias,
+        reverseStats: reverse,
+      }),
+    );
     setScreen("home");
   }
 

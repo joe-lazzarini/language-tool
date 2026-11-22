@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  NOVELTY_BIAS_EXPONENTS,
   STAT_CAP,
   combinePairStat,
   dirKey,
@@ -8,9 +9,12 @@ import {
   fromTuple,
   isKnown,
   isKnownPair,
+  isNoveltyBias,
   isWeak,
   knownIdSet,
   mergeStat,
+  noveltyWeight,
+  pairAttempts,
   parseDirKey,
   putStat,
   recordAttempt,
@@ -18,11 +22,21 @@ import {
   statsToDoc,
   summarizePairKnown,
   toTuple,
+  weightedSampleWithoutReplacement,
   windowAccuracy,
   withManual,
   type WordStat,
 } from "./stats";
 import { parseAccuracyDoc, parseAccuracyStore } from "./storage";
+
+/** Deterministic RNG in [0, 1). */
+function seededRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
 
 function missed(now = 1): WordStat {
   return recordAttempt(undefined, false, now);
@@ -214,6 +228,128 @@ describe("selectCards", () => {
   it("All focus can include a card the user already knows", () => {
     const picked = selectCards(pool, stats, "all", "all", () => 0);
     expect(picked.map((card) => card.id).sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("Off novelty bias matches the previous uniform shuffle for the same RNG", () => {
+    const rngA = seededRng(42);
+    const rngB = seededRng(42);
+    const without = selectCards(pool, stats, "all", 3, rngA);
+    const withOff = selectCards(pool, stats, "all", 3, rngB, { noveltyBias: "off" });
+    expect(withOff.map((card) => card.id)).toEqual(without.map((card) => card.id));
+  });
+
+  it("Strong novelty bias picks unseen words before heavily practiced ones", () => {
+    const practiced: WordStat = {
+      correct: 40,
+      attempts: 50,
+      lastSeen: 100,
+      windowBits: 0xff,
+      windowLen: 8,
+      manual: false,
+    };
+    const forward = new Map<string, WordStat>([
+      ["old", practiced],
+      ["seen", once(2)],
+    ]);
+    const reverse = new Map<string, WordStat>([["old", once(3)]]);
+    const cards = [{ id: "old" }, { id: "seen" }, { id: "new-a" }, { id: "new-b" }];
+    const firsts = new Map<string, number>();
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const picked = selectCards(cards, forward, "all", 2, seededRng(seed), {
+        noveltyBias: "strong",
+        reverseStats: reverse,
+      });
+      const id = picked[0]?.id ?? "";
+      firsts.set(id, (firsts.get(id) ?? 0) + 1);
+    }
+    expect((firsts.get("new-a") ?? 0) + (firsts.get("new-b") ?? 0)).toBeGreaterThan(160);
+    expect(firsts.get("old") ?? 0).toBeLessThan(10);
+    // Heavily practiced words keep a positive weight, so a draw at the end of
+    // the cumulative range can still select them.
+    const attempts = pairAttempts(forward.get("old"), reverse.get("old"));
+    expect(noveltyWeight(attempts, "strong")).toBeGreaterThan(0);
+    const items = ["new", "old"];
+    const weights = [noveltyWeight(0, "strong"), noveltyWeight(attempts, "strong")];
+    expect(weightedSampleWithoutReplacement(items, weights, 1, () => 0.999999999)[0]).toBe("old");
+  });
+
+  it("uses combined pair attempts, not only the current direction", () => {
+    const forward = new Map<string, WordStat>([["a", once(1)]]);
+    const reverse = new Map<string, WordStat>([
+      [
+        "a",
+        {
+          correct: 20,
+          attempts: 30,
+          lastSeen: 50,
+          windowBits: 0,
+          windowLen: 0,
+          manual: false,
+        },
+      ],
+    ]);
+    expect(pairAttempts(forward.get("a"), reverse.get("a"))).toBe(31);
+    const cards = [{ id: "a" }, { id: "b" }];
+    // With only forward stats, a has 1 attempt; with reverse, 31 — strong bias should
+    // almost always prefer unseen b first.
+    let preferB = 0;
+    for (let seed = 1; seed <= 80; seed += 1) {
+      const picked = selectCards(cards, forward, "all", 1, seededRng(seed), {
+        noveltyBias: "strong",
+        reverseStats: reverse,
+      });
+      if (picked[0]?.id === "b") preferB += 1;
+    }
+    expect(preferB).toBeGreaterThan(70);
+  });
+
+  it("ignores novelty bias when Focus is Weak", () => {
+    const forward = new Map<string, WordStat>([
+      ["a", missed()],
+      [
+        "b",
+        {
+          correct: 40,
+          attempts: 50,
+          lastSeen: 100,
+          windowBits: 0xff,
+          windowLen: 8,
+          manual: false,
+        },
+      ],
+    ]);
+    const rngA = seededRng(7);
+    const rngB = seededRng(7);
+    const plain = selectCards(pool, forward, "weak", 3, rngA);
+    const biased = selectCards(pool, forward, "weak", 3, rngB, {
+      noveltyBias: "strong",
+      reverseStats: new Map(),
+    });
+    expect(biased.map((card) => card.id)).toEqual(plain.map((card) => card.id));
+  });
+});
+
+describe("novelty weighting", () => {
+  it("documents exponents and Off as uniform weight", () => {
+    expect(NOVELTY_BIAS_EXPONENTS).toEqual({ off: 0, light: 0.5, medium: 1, strong: 2 });
+    expect(noveltyWeight(0, "off")).toBe(1);
+    expect(noveltyWeight(99, "off")).toBe(1);
+    expect(noveltyWeight(0, "medium")).toBe(1);
+    expect(noveltyWeight(3, "medium")).toBeCloseTo(0.25);
+    expect(noveltyWeight(3, "strong")).toBeCloseTo(1 / 16);
+    expect(isNoveltyBias("medium")).toBe(true);
+    expect(isNoveltyBias("loud")).toBe(false);
+  });
+
+  it("samples without replacement and prefers higher weights", () => {
+    const items = ["rare", "common", "fresh"];
+    const weights = [1, 1, 1000];
+    // Mid-range draws land in the large fresh bucket.
+    expect(weightedSampleWithoutReplacement(items, weights, 1, () => 0.5)[0]).toBe("fresh");
+    // Exhaust the pool without repeats.
+    const order = weightedSampleWithoutReplacement(items, weights, 3, seededRng(99));
+    expect(order).toHaveLength(3);
+    expect(new Set(order).size).toBe(3);
   });
 });
 
