@@ -28,7 +28,13 @@ function startsWithVowelSound(lemma: string): boolean {
   return /^[aeiouáéíóúàèìòùâêîôûäëïöüœæ]/i.test(lemma);
 }
 
-function enArticle(lemma: string, indefinite: boolean): string {
+/** English honorifics / titles — bare "Mr walks", never "The Mr walks". */
+function isEnTitle(lemma: string): boolean {
+  return /^(mr|mrs|ms|miss|dr|prof|sir|madam)\.?$/i.test(lemma.trim());
+}
+
+function enArticle(lemma: string, indefinite: boolean): string | null {
+  if (isEnTitle(lemma)) return null;
   if (!indefinite) return "the";
   return /^[aeiou]/i.test(lemma) ? "an" : "a";
 }
@@ -115,8 +121,9 @@ function attributiveAdj(
   return predicativeAdj(surface, gender === "n" ? "m" : gender);
 }
 
-function joinEn(head: string, adj: string | null, article: string): string {
-  return adj ? `${article} ${adj} ${head}` : `${article} ${head}`;
+function joinEn(head: string, adj: string | null, article: string | null): string {
+  const core = adj ? `${adj} ${head}` : head;
+  return article ? `${article} ${core}` : core;
 }
 
 function joinDe(

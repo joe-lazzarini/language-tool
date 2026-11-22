@@ -402,6 +402,26 @@ describe("semantic restrictions", () => {
     expect(defaultGrammarTagsForNewWord("noun").sem).toEqual(["thing"]);
     expect(defaultGrammarTagsForNewWord("noun", { placeName: true }).sem).toEqual(["place", "thing"]);
   });
+
+  it("does not attach determiner-like adjectives such as all", () => {
+    const deck = [
+      entry("pl-103", "noun", { en: form("house"), pl: form("dom") }, "house"),
+      entry("pl-79", "adjective", { en: form("all"), pl: form("wszystek") }, "all"),
+      entry("de-49", "adjective", { en: form("big"), pl: form("duży") }, "big"),
+      entry("pl-798", "verb", { en: form("to sleep"), pl: form("spać") }, "sleep"),
+    ];
+    const stats = allKnown(deck.map((e) => e.id));
+    const index = buildVocabIndex(deck, grammar, "en", "pl", stats, stats);
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const adj = composeOne(index, "en", "pl", "adj", mulberry(seed), 0);
+      if (adj) expect(adj.wordIds).not.toContain("pl-79");
+      const attr = composeOne(index, "en", "pl", "attr-vi", mulberry(seed + 50), 1);
+      if (attr) expect(attr.wordIds).not.toContain("pl-79");
+    }
+    const basic = enumerateBasicClauses(index, "en", "pl", 0);
+    expect(basic.some((s) => s.wordIds.includes("pl-79"))).toBe(false);
+    expect(basic.some((s) => /all house/i.test(s.prompt))).toBe(false);
+  });
 });
 
 describe("realistic First 100/250 pools", () => {

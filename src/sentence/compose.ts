@@ -153,6 +153,39 @@ function isLexicalCopula(verb: SlotWord): boolean {
   return lemma === "be" || lemma === "być" || lemma === "sein";
 }
 
+/** Determiners / quantifiers that look like adjectives in the deck but yield "the all X". */
+const NON_ATTRIBUTIVE_ADJECTIVES = new Set([
+  "all",
+  "each",
+  "some",
+  "every",
+  "any",
+  "both",
+  "either",
+  "neither",
+  "few",
+  "many",
+  "much",
+  "several",
+  "such",
+]);
+
+function usableAdjective(adj: SlotWord): boolean {
+  const concept = (adj.concept ?? "").toLowerCase().trim();
+  if (concept && NON_ATTRIBUTIVE_ADJECTIVES.has(concept)) return false;
+  const lemma = (adj.prompt.lemma || adj.answer.lemma || "").toLowerCase().trim();
+  return !NON_ATTRIBUTIVE_ADJECTIVES.has(lemma);
+}
+
+const TITLE_NOUN_CONCEPTS = new Set(["mr", "mrs", "ms", "dr", "prof"]);
+
+function isTitleNoun(noun: SlotWord): boolean {
+  const concept = (noun.concept ?? "").toLowerCase().trim();
+  if (concept && TITLE_NOUN_CONCEPTS.has(concept)) return true;
+  const lemma = (noun.prompt.lemma || "").trim();
+  return /^(mr|mrs|ms|miss|dr|prof)\.?$/i.test(lemma);
+}
+
 function pick<T>(items: readonly T[], rng: () => number): T | null {
   if (items.length === 0) return null;
   return items[Math.floor(rng() * items.length)]!;
@@ -770,8 +803,9 @@ export function composeOne(
     const subjects = nouns.filter((n) => overlaps(n.sem, verb.subject));
     const subject = pick(subjects, rng);
     if (!subject) return null;
+    if (kind.startsWith("attr") && isTitleNoun(subject)) return null;
     const attrPool = kind.startsWith("attr")
-      ? adjectives.filter((a) => adjFitsNoun(a, subject))
+      ? adjectives.filter((a) => usableAdjective(a) && adjFitsNoun(a, subject))
       : [];
     const attr = kind.startsWith("attr") ? pick(attrPool, rng) ?? undefined : undefined;
     if (kind.startsWith("attr") && !attr) return null;
@@ -837,10 +871,11 @@ export function composeOne(
     const object = pick(objects, rng);
     if (!object) return null;
     const attrPool = kind.startsWith("attr")
-      ? adjectives.filter((a) => adjFitsNoun(a, subject))
+      ? adjectives.filter((a) => usableAdjective(a) && adjFitsNoun(a, subject))
       : [];
     const attr = kind.startsWith("attr") ? pick(attrPool, rng) ?? undefined : undefined;
     if (kind.startsWith("attr") && !attr) return null;
+    if (kind.startsWith("attr") && isTitleNoun(subject)) return null;
     const tense: Tense = kind === "past-vt" ? "past" : "present";
 
     let ppPrompt: ClauseBits["pp"];
@@ -896,7 +931,7 @@ export function composeOne(
     const subject = pick(nouns, rng);
     if (!subject) return null;
     const adj = pick(
-      adjectives.filter((a) => adjFitsNoun(a, subject)),
+      adjectives.filter((a) => usableAdjective(a) && adjFitsNoun(a, subject)),
       rng,
     );
     if (!adj) return null;
@@ -1137,7 +1172,7 @@ export function enumerateBasicClauses(
     if (full()) break;
     for (const adj of adjectives) {
       if (full()) break;
-      if (!adjFitsNoun(adj, subject)) continue;
+      if (!usableAdjective(adj) || !adjFitsNoun(adj, subject)) continue;
       const bits = clauseFromParts(subject, { adj });
       const prompt = renderClause(promptLang, "prompt", bits);
       const answer = renderClause(answerLang, "answer", bits);

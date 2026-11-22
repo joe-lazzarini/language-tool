@@ -160,6 +160,7 @@ function pl3sg(lemma: string): string | null {
     opowiedzieć: "opowie",
     jechać: "jedzie",
     myśleć: "myśli",
+    pomyśleć: "pomyśli",
     słyszeć: "słyszy",
     siedzieć: "siedzi",
     stać: "stoi",
@@ -167,7 +168,19 @@ function pl3sg(lemma: string): string | null {
     żyć: "żyje",
     brać: "bierze",
     rozumieć: "rozumie",
+    zrozumieć: "zrozumie",
     patrzeć: "patrzy",
+    należeć: "należy",
+    leżeć: "leży",
+    zależeć: "zależy",
+    istnieć: "istnieje",
+    brzmieć: "brzmi",
+    woleć: "woli",
+    umieć: "umie",
+    odpowiedzieć: "odpowie",
+    dowiedzieć: "dowie",
+    przypomnieć: "przypomni",
+    wspomnieć: "wspomni",
   };
   const w = lemma.toLowerCase();
   if (irregular[w]) return irregular[w]!;

@@ -118,6 +118,7 @@ const EN_PAST: Record<string, string> = {
   sell: "sold",
   tell: "told",
   win: "won",
+  become: "became",
   begin: "began",
   break: "broke",
   choose: "chose",
@@ -299,6 +300,10 @@ export function plPast(lemma: string, gender: Gender, number: GramNumber = "sg")
     pisać: { m: "pisał", f: "pisała", n: "pisało", pl: "pisali" },
     mówić: { m: "mówił", f: "mówiła", n: "mówiło", pl: "mówili" },
     robić: { m: "robił", f: "robiła", n: "robiło", pl: "robili" },
+    myśleć: { m: "myślał", f: "myślała", n: "myślało", pl: "myśleli" },
+    pomyśleć: { m: "pomyślał", f: "pomyślała", n: "pomyślało", pl: "pomyśleli" },
+    leżeć: { m: "leżał", f: "leżała", n: "leżało", pl: "leżeli" },
+    należeć: { m: "należał", f: "należała", n: "należało", pl: "należeli" },
   };
   const w = lemma.toLowerCase();
   const known = irregular[w];
@@ -313,7 +318,22 @@ export function plPast(lemma: string, gender: Gender, number: GramNumber = "sg")
     if (gender === "n") return `${stem}ło`;
     return `${stem}ł`;
   }
-  if (w.endsWith("ać") || w.endsWith("eć") || w.endsWith("ić") || w.endsWith("yć")) {
+  // -ieć → -iał (rozumieć→rozumiał); bare -eć → -ał (myśleć→myślał), not *myśleł.
+  if (w.endsWith("ieć")) {
+    const stem = `${lemma.slice(0, -3)}ia`;
+    if (number === "pl") return `${lemma.slice(0, -3)}ieli`;
+    if (gender === "f") return `${stem}ła`;
+    if (gender === "n") return `${stem}ło`;
+    return `${stem}ł`;
+  }
+  if (w.endsWith("eć")) {
+    const stem = `${lemma.slice(0, -2)}a`;
+    if (number === "pl") return `${lemma.slice(0, -2)}eli`;
+    if (gender === "f") return `${stem}ła`;
+    if (gender === "n") return `${stem}ło`;
+    return `${stem}ł`;
+  }
+  if (w.endsWith("ać") || w.endsWith("ić") || w.endsWith("yć")) {
     const stem = lemma.slice(0, -1);
     if (number === "pl") return `${stem}li`;
     if (gender === "f") return `${stem}ła`;

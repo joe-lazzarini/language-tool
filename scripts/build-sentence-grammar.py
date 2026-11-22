@@ -339,8 +339,9 @@ VT: dict[str, tuple[list[str], list[str]]] = {
     "count": (PERSON_SUB, THING_OBJ),
     "mark": (PERSON_SUB, THING_OBJ),
     "sign": (PERSON_SUB, ["readable", "thing"]),
-    "say": (PERSON_SUB, ["thing", "readable", "person"]),
-    "speak": (PERSON_SUB, ["thing", "readable", "person"]),
+    # Avoid "says the person" / PL *powie osobę — content objects only.
+    "say": (PERSON_SUB, ["thing", "readable"]),
+    "speak": (PERSON_SUB, ["thing", "readable"]),
     "talk": (PERSON_SUB, ["person"]),
     "tell": (PERSON_SUB, ["person", "thing", "readable"]),
     "ask": (PERSON_SUB, ["person", "thing"]),
@@ -768,6 +769,8 @@ ADJ_DOMAINS: dict[str, list[str]] = {
 PL_FIN_FIX = {
     "powiedzieć": "powie",
     "opowiedzieć": "opowie",
+    "odpowiedzieć": "odpowie",
+    "dowiedzieć": "dowie",
     "wiedzieć": "wie",
     "jechać": "jedzie",
     "przyjechać": "przyjedzie",
@@ -782,6 +785,8 @@ PL_FIN_FIX = {
     "otworzyć": "otworzy",
     "zatrzymać": "zatrzyma",
     "zapomnieć": "zapomni",
+    "przypomnieć": "przypomni",
+    "wspomnieć": "wspomni",
     "ukryć": "ukryje",
     "wygrać": "wygra",
     "kupić": "kupi",
@@ -809,6 +814,13 @@ PL_FIN_FIX = {
     "pić": "pije",
     "mieć": "ma",
     "być": "jest",
+    "należeć": "należy",
+    "leżeć": "leży",
+    "zależeć": "zależy",
+    "istnieć": "istnieje",
+    "brzmieć": "brzmi",
+    "woleć": "woli",
+    "umieć": "umie",
 }
 
 DE_LEMMA_PARTICIPLE_HINT = {
@@ -973,6 +985,7 @@ def adj_domains(concept: str) -> list[str]:
 
 def fix_surfaces(word: dict[str, Any]) -> None:
     langs = word.get("langs") or {}
+    concept = concept_key(word)
     pl = langs.get("pl")
     if isinstance(pl, dict):
         lemma = (pl.get("lemma") or "").strip().lower()
@@ -986,6 +999,19 @@ def fix_surfaces(word: dict[str, Any]) -> None:
             pl["fin"] = "powie"
         if lemma == "opowiedzieć" and fin.startswith("opowiedzie"):
             pl["fin"] = "opowie"
+        if lemma == "odpowiedzieć" and (fin.startswith("odpowiedzie") or fin == "odpowiedzieć"):
+            pl["fin"] = "odpowie"
+        # Honorifics: pani is feminine (deck sometimes tags masculine).
+        if lemma == "pani" or concept == "mrs":
+            pl["gender"] = "f"
+        if lemma == "pan" or concept == "mr":
+            pl["gender"] = "m"
+    # Bare citation NPs for English titles (no "the").
+    en = langs.get("en")
+    if isinstance(en, dict) and concept in {"mr", "mrs", "ms", "dr"}:
+        title = (en.get("lemma") or "").strip() or ("Mr" if concept == "mr" else concept.title())
+        en["npNom"] = title
+        en["npAcc"] = title
     de = langs.get("de")
     if isinstance(de, dict):
         lemma = (de.get("lemma") or "").strip().lower()
