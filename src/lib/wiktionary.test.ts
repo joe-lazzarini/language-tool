@@ -74,6 +74,116 @@ describe("parseLangEntry", () => {
     expect(parseLangEntry(CATS, "en")?.formOfLemma).toBe("cat");
   });
 
+  it("reads Polish pl-head noun/verb form lemmas (captured en.wiktionary shapes)", () => {
+    // Live Polish entries often have ONLY a head template — no `# {{inflection of}}` line.
+    expect(
+      parseLangEntry(
+        "==Polish==\n===Noun===\n{{pl-head|noun form|humor|g=m-in}}\n",
+        "pl",
+      )?.formOfLemma,
+    ).toBe("humor");
+    expect(
+      parseLangEntry("==Polish==\n===Verb===\n{{pl-head|verb form|powtarzać}}\n", "pl")?.formOfLemma,
+    ).toBe("powtarzać");
+    expect(
+      parseLangEntry("==Polish==\n===Noun===\n{{pl-head|noun form|dom|g=m-in}}\n", "pl")?.formOfLemma,
+    ).toBe("dom");
+    expect(
+      parseLangEntry(
+        "==Polish==\n===Verb===\n{{pl-head|verb form|robić<id:make>}}\n",
+        "pl",
+      )?.formOfLemma,
+    ).toBe("robić");
+    expect(
+      parseLangEntry("==Polish==\n===Verb===\n{{pl-head|verb form|czytać}}\n", "pl")?.formOfLemma,
+    ).toBe("czytać");
+    expect(
+      parseLangEntry("==Polish==\n===Noun===\n{{pl-head|noun form|kobieta|g=f}}\n", "pl")?.formOfLemma,
+    ).toBe("kobieta");
+  });
+
+  it("reads German verb form of / de-adj form of / inflection of", () => {
+    expect(
+      parseLangEntry(
+        "==German==\n===Verb===\n{{head|de|verb form}}\n# {{verb form of|de|gehen||1//3|s|pret}}\n",
+        "de",
+      )?.formOfLemma,
+    ).toBe("gehen");
+    expect(
+      parseLangEntry(
+        "==German==\n===Adjective===\n{{head|de|adjective form}}\n# {{de-adj form of|klein}}\n",
+        "de",
+      )?.formOfLemma,
+    ).toBe("klein");
+    expect(
+      parseLangEntry(
+        "==German==\n===Noun===\n{{head|de|noun form}}\n# {{inflection of|de|Haus||nom//acc//gen|p}}\n",
+        "de",
+      )?.formOfLemma,
+    ).toBe("Haus");
+  });
+
+  it("reads English / Romance / Russian inflection templates", () => {
+    expect(
+      parseLangEntry(
+        "==English==\n===Verb===\n{{head|en|verb form}}\n# {{infl of|en|go||spast}}\n",
+        "en",
+      )?.formOfLemma,
+    ).toBe("go");
+    expect(
+      parseLangEntry(
+        "==English==\n===Noun===\n{{head|en|noun form}}\n# {{plural of|en|child}}\n",
+        "en",
+      )?.formOfLemma,
+    ).toBe("child");
+    expect(
+      parseLangEntry(
+        "==French==\n===Verb===\n# {{inflection of|fr|parler||1//3|s|pres|ind}}\n",
+        "fr",
+      )?.formOfLemma,
+    ).toBe("parler");
+    expect(
+      parseLangEntry(
+        "==Italian==\n===Verb===\n# {{inflection of|it|parlare||1|s|pres|indc}}\n",
+        "it",
+      )?.formOfLemma,
+    ).toBe("parlare");
+    expect(
+      parseLangEntry(
+        "==Spanish==\n===Verb===\n{{head|es|verb form}}\n# {{es-verb form of|hablar}}\n",
+        "es",
+      )?.formOfLemma,
+    ).toBe("hablar");
+    expect(
+      parseLangEntry(
+        "==Russian==\n===Noun===\n# {{inflection of|ru|дом||ins|p}}\n",
+        "ru",
+      )?.formOfLemma,
+    ).toBe("дом");
+    expect(
+      parseLangEntry(
+        "==Russian==\n===Verb===\n# {{inflection of|ru|говори́ть||3|s|pres|ind|impfv}}\n",
+        "ru",
+      )?.formOfLemma,
+    ).toBe("говорить");
+  });
+
+  it("prefers the lemma that matches the first POS when several form-ofs appear", () => {
+    const parsed = parseLangEntry(
+      `==Spanish==
+===Noun===
+{{head|es|noun form|g=f-p}}
+# {{noun form of|es|habla||p}}
+===Verb===
+{{head|es|verb form}}
+# {{es-verb form of|hablar}}
+`,
+      "es",
+    );
+    expect(parsed?.pos).toBe("noun");
+    expect(parsed?.formOfLemma).toBe("habla");
+  });
+
   it("reads Spanish from the language registry", () => {
     const parsed = parseLangEntry(
       "==English==\n\n===Noun===\n# [[cat]]\n\n====Translations====\n{{trans-top|cat}}\n* Spanish: {{t+|es|gato|m}}\n* French: {{t+|fr|chat|m}}\n",
