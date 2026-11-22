@@ -111,4 +111,16 @@ describe("buildLemmaIndex / resolveLemma", () => {
       hit: null,
     });
   });
+
+  it("does not invent English verb plurals like gos/bes from enPlural", () => {
+    expect(resolveLemma("en", "gos", index).changed).toBe(false);
+    expect(resolveLemma("en", "bes", index).changed).toBe(false);
+    expect(resolveLemma("en", "goes", index)).toMatchObject({ lemma: "go", changed: true });
+  });
+
+  it("never remaps a typed citation lemma to a different word", () => {
+    expect(resolveLemma("en", "go", index)).toMatchObject({ lemma: "go", changed: false });
+    expect(resolveLemma("de", "Haus", index)).toMatchObject({ lemma: "Haus", changed: false });
+    expect(resolveLemma("pl", "dom", index)).toMatchObject({ lemma: "dom", changed: false });
+  });
 });

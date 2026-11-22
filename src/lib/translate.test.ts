@@ -144,6 +144,57 @@ describe("lookupWord", () => {
     resetLemmaIndexCache();
   });
 
+  it("keeps the static lemma when Wiktionary returns a different citation", async () => {
+    resetLemmaIndexCache();
+    const grammar: GrammarFile = {
+      version: 1,
+      words: {
+        go: {
+          pos: "verb",
+          langs: {
+            pl: { lemma: "iść", fin: "idzie" },
+            en: { lemma: "go", fin: "goes" },
+          },
+        },
+      },
+    };
+    await loadLemmaIndex(async () => grammar);
+
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("wiktionary")) {
+        const page = new URL(url).searchParams.get("page") || "";
+        if (page === "iść" || page === "idzie") {
+          return {
+            ok: true,
+            json: async () => ({
+              parse: {
+                title: page,
+                wikitext: {
+                  "*": `==Polish==\n===Verb===\n# {{form of|pl|chodzić}}\n`,
+                },
+              },
+            }),
+          } as Response;
+        }
+        return { ok: true, json: async () => ({ error: { code: "missingtitle" } }) } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          responseData: { translatedText: "go" },
+          matches: [{ translation: "go", match: 1 }],
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const draft = await lookupWord("idzie", "pl", [], fetchImpl, ["pl", "en"]);
+    expect(draft.forms.pl?.text).toBe("iść");
+    expect(draft.lemma).toEqual({ canonical: "iść", original: "idzie", source: "static" });
+    expect(draft.notes.filter((note) => note.startsWith("Saved as"))).toHaveLength(1);
+    resetLemmaIndexCache();
+  });
+
   it("falls back to MyMemory when Wiktionary has no entry", async () => {
     const fetchImpl = (async (input: RequestInfo | URL) => {
       const url = String(input);

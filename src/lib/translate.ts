@@ -261,17 +261,13 @@ export async function lookupWord(
     if (wiki) {
       if (!deckHit && wiki.pos) pos = wiki.pos;
       const wikiChanged = foldLemmaKey(wiki.lemma, source) !== foldLemmaKey(query, source);
-      if (!deckHit && wikiChanged) {
+      if (!deckHit && wikiChanged && !lemma) {
+        // Only Wiktionary may rewrite the source when the static map did not.
+        // If grammar/morph already canonicalized, keep that lemma and use wiki for translations only.
         const lemmaForm = buildForm([{ text: wiki.lemma }]);
         if (lemmaForm) forms[source] = lemmaForm;
-        if (!lemma) {
-          lemma = { canonical: wiki.lemma, original: query, source: "wiktionary" };
-          notes.push(lemmaNote(wiki.lemma, query));
-        } else if (foldLemmaKey(lemma.canonical, source) !== foldLemmaKey(wiki.lemma, source)) {
-          // Static map already rewrote the source; keep that lemma, follow wiki for translations.
-          lemma = { ...lemma, canonical: wiki.lemma };
-          notes.push(lemmaNote(wiki.lemma, query));
-        }
+        lemma = { canonical: wiki.lemma, original: query, source: "wiktionary" };
+        notes.push(lemmaNote(wiki.lemma, query));
       }
       for (const code of targets) {
         if (applyAnswers(forms, code, wiki.forms[code])) wikiNote = true;

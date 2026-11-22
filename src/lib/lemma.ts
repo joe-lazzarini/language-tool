@@ -207,8 +207,8 @@ function indexDerivedMorph(index: LemmaIndex, lang: LangCode, surface: LangSurfa
   if (pos === "verb") {
     if (lang === "en") {
       addForm(index, lang, enPast(lemma) ?? undefined, lemma, pos, "morph");
+      // 3sg present only — enPlural invents bogus forms (gos, bes, haves).
       addForm(index, lang, enThirdPerson(lemma) ?? undefined, lemma, pos, "morph");
-      addForm(index, lang, enPlural(lemma.replace(/^to\s+/i, "")) ?? undefined, lemma, pos, "morph");
     }
     if (lang === "pl") {
       for (const g of ["m", "f", "n"] as const) {
